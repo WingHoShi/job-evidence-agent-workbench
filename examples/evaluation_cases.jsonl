@@ -1,0 +1,4 @@
+{"name":"充分支持","claim":"使用 FastAPI 提供健康检查接口。","expected_verdict":"strong","expected_review_status":"confirmed","evidence_paths":["projects/health-service/README.md","projects/health-service/src/app.py"]}
+{"name":"材料不足","claim":"掌握 Kubernetes 基础概念。","expected_verdict":"none","expected_review_status":"rejected","evidence_paths":[]}
+{"name":"材料冲突","claim":"将服务响应时间从 5 秒优化至 1 秒。","expected_verdict":"conflict","expected_review_status":"rejected","evidence_paths":["resume.md"]}
+{"name":"补证后恢复","claim":"使用 Docker Compose 编排本地服务。","expected_verdict":"strong","expected_review_status":"confirmed","evidence_paths":["supplement/docker-compose.md"]}
