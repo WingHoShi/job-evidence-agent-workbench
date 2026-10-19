@@ -264,9 +264,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .interview-turn-review h4 { margin-bottom: 8px; }
 .interview-answer-quote { padding: 18px 20px; background: #f5f8fd; border-left: 3px solid #85a9d6; border-radius: 0 10px 10px 0; }
 .interview-answer-quote span { color: var(--muted); font-size: 12px; }
-.interview-reference { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 10px; }
-.interview-reference pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; padding: 16px; background: #f5f8fd; border-radius: 6px; }
-.interview-reference-links { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: 10px; font-size: 13px; }
+.interview-references { display: grid; gap: 5px; margin-top: 10px; min-width: 0; }
+.interview-reference { min-width: 0; border-left: 3px solid #8ebee4; background: #f6faff; color: #355874; padding: 7px 9px; font-size: 13px; }
+.interview-reference > summary { color: #355874; font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
+.interview-reference > summary:hover { color: #234b70; }
+.interview-reference > summary:focus-visible { outline: 2px solid #84b1e6; outline-offset: 3px; }
+.interview-reference pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; margin: 10px 0 2px; color: #526b82; font-size: 12px; tab-size: 4; }
 .interview-turn-review > summary, .interview-review-summary summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .interview-review-summary > p { background: #f4f8fd; border-left: 3px solid var(--primary); padding: 16px 20px; }
 .interview-review-summary li { margin: 8px 0; }

@@ -16,7 +16,7 @@ function reviewFixture(): InterviewReview {
   };
 }
 
-test("总体结论与去重前三项重点优先展示，逐题默认折叠且引用只渲染一份", () => {
+test("总体结论与去重前三项重点优先展示，逐题默认折叠，引用随分析原地展开", () => {
   const review = { ...reviewFixture(), overall_summary: "本轮尚未展示接口基础。", answer_consistency: [{ text: "本轮回答无直接冲突", turn_ids: [1], claim_ids: [2], evidence_ids: [] }] };
   const { container } = render(<InterviewReviewPage review={review} />);
   expect(screen.getByText("本轮尚未展示接口基础。")).toBeInTheDocument();
@@ -27,11 +27,31 @@ test("总体结论与去重前三项重点优先展示，逐题默认折叠且�
   expect(turn).not.toHaveAttribute("open");
   fireEvent.click(screen.getByText(/第 1 题 · 主张 2/));
   expect(turn).toHaveAttribute("open");
-  expect(container.querySelectorAll("details.interview-reference")).toHaveLength(1);
-  fireEvent.click(within(priorities).getAllByRole("link", { name: "[E8]" })[0]);
-  expect(container.querySelector("details.interview-reference")).toHaveAttribute("open");
+  const firstPriority = within(priorities).getAllByRole("listitem")[0];
+  const reference = firstPriority.querySelector("details.interview-reference");
+  expect(firstPriority.querySelectorAll("details.interview-reference")).toHaveLength(1);
+  expect(reference).not.toHaveAttribute("open");
+  fireEvent.click(within(firstPriority).getByText("[E8] app.py · src/app.py · 全文"));
+  expect(reference).toHaveAttribute("open");
+  expect(within(firstPriority).getByText("app = FastAPI()")).toBeVisible();
+  expect(turn?.querySelector("details.interview-reference")).not.toHaveAttribute("open");
+  expect(container.querySelector("a[href^='#']")).toBeNull();
+  expect(screen.queryByRole("heading", { name: "引用材料" })).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "回答前后一致性" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "简历主张对照" })).toBeInTheDocument();
+});
+
+test("引用原地绑定对应材料，忽略不存在的编号并保留代码与补充自述提示", () => {
+  const review = reviewFixture();
+  review.consistency = [{ text: "仅为补充自述", turn_ids: [1], claim_ids: [2], evidence_ids: [9, 999, 9] }];
+  review.evidence.push({ id: 9, text: 'def health():\n    return {"status": "ok"}', kind: "supplement", label: "补充说明", locator: "全文", relative_path: "用户补充" });
+  render(<InterviewReviewPage review={review} />);
+  const analysis = screen.getByText("仅为补充自述").closest("article")!;
+  expect(analysis.querySelectorAll("details")).toHaveLength(1);
+  fireEvent.click(within(analysis).getByText("[E9] 补充说明 · 用户补充 · 全文"));
+  expect(analysis.querySelector("pre")?.textContent).toBe('def health():\n    return {"status": "ok"}');
+  expect(within(analysis).getByText("用户补充自述，不是独立证明。")).toBeVisible();
+  expect(within(analysis).queryByText(/E999|app = FastAPI/)).not.toBeInTheDocument();
 });
 
 test("旧复盘不把历史混合一致性结论伪装成简历对照，也不自动编造总评", () => {
