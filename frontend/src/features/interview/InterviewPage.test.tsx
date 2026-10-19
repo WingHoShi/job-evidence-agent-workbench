@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { InterviewPage } from "./InterviewPage";
 import { InterviewReviewPage } from "./InterviewReviewPage";
@@ -7,6 +7,37 @@ import type { InterviewReview } from "./interviewApi";
 
 beforeEach(() => sessionStorage.clear());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+test("历史按题独立展开，查看已保存回答不影响当前草稿或发起请求", () => {
+  const base = sessionFixture();
+  const session = sessionFixture({ turns: [
+    { ...base.turns[0], answer: "我负责健康检查接口。" },
+    { ...base.turns[0], id: 2, ordinal: 2, kind: "followup", followup_of_turn_id: 1, question: "异常如何验证？", answer: null },
+  ] });
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  render(<InterviewPage session={session} onSessionChanged={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("当前回答"), { target: { value: "先模拟依赖超时" } });
+  const history = screen.getByRole("heading", { name: "问答记录" }).closest("aside")!;
+  const first = within(history).getByText("接口如何实现？").closest("details")!;
+  const second = within(history).getByText("异常如何验证？").closest("details")!;
+  expect(first).not.toBeNull();
+  expect(second).not.toBeNull();
+  expect(first).not.toHaveAttribute("open");
+  expect(second).not.toHaveAttribute("open");
+  expect(within(first).getByText("我负责健康检查接口。")).not.toBeVisible();
+  fireEvent.click(first.querySelector("summary")!);
+  expect(within(first).getByText("我负责健康检查接口。")).toBeVisible();
+  expect(second).not.toHaveAttribute("open");
+  fireEvent.click(second.querySelector("summary")!);
+  expect(first).toHaveAttribute("open");
+  expect(second).toHaveAttribute("open");
+  expect(within(first).getByText("已回答")).toBeVisible();
+  expect(within(second).getAllByText("待回答").length).toBeGreaterThan(0);
+  expect(screen.getByLabelText("当前回答")).toHaveValue("先模拟依赖超时");
+  expect(sessionStorage.getItem("interview-draft:7:9:2")).toBe("先模拟依赖超时");
+  expect(fetcher).not.toHaveBeenCalled();
+});
 
 test("提交回答后更新下一题，不显示即时评分", async () => {
   const base = sessionFixture();
