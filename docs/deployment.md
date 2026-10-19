@@ -1,5 +1,7 @@
 # 部署、初始化与数据恢复
 
+[返回项目首页](../README.md) · [工作台使用指南](usage.md)
+
 本文描述可迁移的本地部署流程，不包含开发者个人电脑路径、历史镜像 ID、真实任务或密钥。应用面向单用户自托管，没有公网多租户鉴权；Compose 默认只绑定 `127.0.0.1`，不要直接改为公网暴露。
 
 ## 文件与存储
@@ -12,6 +14,8 @@
 数据与容器分离。普通 `docker compose down` 不删除上述宿主机目录，但手动删除目录或恢复旧备份会影响数据。备份包含导入材料、会话和密钥，不应上传公开仓库、网盘或作为演示附件。
 
 ## 首次安装
+
+Windows 可按 [Docker Desktop 官方说明](https://docs.docker.com/desktop/setup/install/windows-install/) 安装并打开软件，等待 Linux 容器引擎就绪。基础镜像使用 DaoCloud Docker Hub 加速地址，首次构建需要网络；不可访问时检查来源与网络，不改用未知镜像。
 
 在项目根目录运行，确保 Docker 已就绪；该流程会新建本地数据与配置目录：
 
@@ -61,3 +65,68 @@ docker compose up -d --no-build app
 Git 和构建上下文均应排除运行目录、缓存、浏览器配置和密钥。`examples/projects/prompt-injection-demo/.env` 是唯一刻意保留在 Git 候选中的虚构 `.env` 测试夹具，用于测试导入跳过规则；不要用真实密钥替换它。该样例目录不会进入 Docker 构建上下文。
 
 个人部署流水记录保留本机，不作为公共运行文档；公开入口为本文件与项目 README。没有另行选择许可证前，不自动添加许可证或改写第三方授权说明。
+
+个人 `Career Studio` 快捷方式、启动脚本与图标没有随公共仓库发布，也不是安装依赖。下载仓库的用户应使用本文的 Compose 或原生开发流程；不要寻找只在开发者电脑存在的入口。
+
+## 日常维护与端口
+
+在原项目目录使用原配置操作，避免误连不同数据目录：
+
+```powershell
+docker compose stop app
+docker compose start app
+docker compose ps
+docker compose logs --tail 100 app
+```
+
+关闭浏览器不会停止服务。删除容器不等于删除宿主机挂载目录，但删除或覆盖 `data/`、`runtime-config/` 会影响任务与配置。
+
+默认端口为 8001。首次安装前可在 PowerShell 设置 `$env:JOB_EVIDENCE_PORT = "8011"`；后续 Compose 命令需沿用相同端口配置。确认浏览器访问的是对应实例，不要把不同地址上的记录混为一谈。
+
+## 原生开发
+
+前提为 Python 3.12+、Node.js 22 和 npm。以下命令从项目根目录执行，使用清华 PyPI 镜像与 npmmirror：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]" --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+npm --prefix frontend ci --registry=https://registry.npmmirror.com
+npm --prefix frontend run build
+.\.venv\Scripts\uvicorn.exe job_evidence_agent.app:app --host 127.0.0.1 --port 8001
+```
+
+后端提供已构建的 `frontend/dist`，页面和 `/api` 同源。当前 Vite 配置没有 API 代理，单独运行 `npm run dev` 不保证前后端联通。若 Docker 已占用 8001，不要再同时启动相同端口的开发服务。
+
+首次启动建立业务库后，在服务终端按 Ctrl+C 停止，初始化面试表：
+
+```powershell
+.\.venv\Scripts\python.exe -m job_evidence_agent.migrate_interviews --database data/workbench.sqlite3 --backup-dir data/backups
+```
+
+仅迁移成功后再启动 Uvicorn。迁移会先检查和备份业务库，不存在的数据库不会被创建为空库。不要指向其他项目的数据文件。
+
+## 隔离演示实例
+
+若要与已有实例并存，必须同时使用**独立 Compose 项目名、数据目录、配置目录和未占用端口**。只改数据目录但沿用项目名，仍可能替换现有容器。
+
+```powershell
+$env:JOB_EVIDENCE_DATA_DIR = ".acceptance-data"
+$env:JOB_EVIDENCE_CONFIG_DIR = ".acceptance-runtime-config"
+$env:JOB_EVIDENCE_PORT = "8011"
+docker compose -p job-evidence-demo up -d --build
+```
+
+选择未占用的端口，访问相应地址（例中为 `http://127.0.0.1:8011`）。按“首次安装”初始化面试表时，所有 Compose 命令都必须加入 `-p job-evidence-demo` 并保留上述环境配置；不要对默认项目执行停止或迁移。
+
+演示结束使用 `docker compose -p job-evidence-demo down` 停止该实例，不删除挂载目录。目录仍可能包含密钥和虚构任务；删除或备份前先核对范围。完成后另开终端再操作原实例，避免沿用演示环境变量。
+
+## 开发验证命令
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_acceptance_cases.py -q
+npm --prefix frontend run test
+npm --prefix frontend run build
+```
+
+以上模拟测试与构建不能替代真实模型和浏览器完整业务验收。真实调用先确认费用与资料范围，使用虚构材料；不把健康响应或测试通过描述成经历、能力或答案准确率的认证。
