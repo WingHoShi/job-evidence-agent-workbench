@@ -208,7 +208,8 @@ test("导航到材料中心后展示任务材料", async () => {
   fireEvent.click(screen.getByRole("button", { name: "材料中心" }));
 
   expect(screen.getByRole("heading", { name: "材料中心" })).toBeInTheDocument();
-  expect(screen.getAllByText("简历")).toHaveLength(2);
+  expect(screen.getByText("简历", { selector: ".material-file strong" })).toBeInTheDocument();
+  expect(screen.getByText("简历", { selector: ".material-kind" })).toBeInTheDocument();
 });
 
 test("导航到证据审计后展示逐条审核工作区", async () => {
