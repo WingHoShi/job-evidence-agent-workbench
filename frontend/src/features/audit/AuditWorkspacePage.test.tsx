@@ -44,7 +44,7 @@ test("完整判定到达后更新风险显示", () => {
   expect(riskCell()).toHaveTextContent("低");
 });
 
-test("选择主张后展示详情、门禁和审核操作", () => {
+test("选择主张后展示详情、审核提示和审核操作", () => {
   render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
 
   fireEvent.click(screen.getByRole("row", { name: /使用 FastAPI 提供服务/ }));
@@ -52,8 +52,38 @@ test("选择主张后展示详情、门禁和审核操作", () => {
   expect(screen.getByRole("heading", { name: "主张详情" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "证据数量" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
-  expect(screen.getByText("确定性门禁")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "审核提示" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "接受主张" })).toBeInTheDocument();
+});
+
+test("长证据默认折叠，风险与审核操作在原文之前且仍需确认风险", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    evidence: [{ id: 11, locator: "health-service/README.md:1", text: "这是用于核验的长证据。".repeat(40) }],
+  }) });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "重新判定当前主张" }));
+  await screen.findByText("候选证据判定已完成");
+  const original = screen.getByText("这是用于核验的长证据。".repeat(40));
+  const disclosure = original.closest("details");
+  expect(disclosure).not.toBeNull();
+  expect(disclosure).not.toHaveAttribute("open");
+  const accept = screen.getByRole("button", { name: "接受主张" });
+  expect(accept.compareDocumentPosition(original) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText("证据不足，需要补充或人工确认")).toBeVisible();
+  fireEvent.click(accept);
+  expect(screen.getByRole("dialog", { name: "确认接受风险主张" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("列表分别显示总数与待审核数，不把已审核主张算作待审核", () => {
+  render(<AuditWorkspacePage snapshot={{ ...snapshot, claims: [
+    snapshot.claims[0],
+    { ...snapshot.claims[0], id: 2, text: "已确认的主张", status: "confirmed" },
+    { ...snapshot.claims[0], id: 3, text: "已拒绝的主张", status: "rejected" },
+  ] }} onChanged={vi.fn()} />);
+  expect(screen.getByText("共 3 条 · 待审核 1 条")).toBeInTheDocument();
+  expect(screen.getAllByRole("row")).toHaveLength(4);
 });
 
 test("已有判定的当前待审核主张可手动重新判定，不自动发送请求", async () => {
@@ -101,7 +131,9 @@ test("风险接受必须确认，取消不提交，确认请求绑定当前主�
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
   vi.stubGlobal("fetch", fetchMock);
   render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "接受主张" }));
+  const decisions = screen.getByRole("group", { name: "人工审核" });
+  expect(within(decisions).getByRole("button", { name: "拒绝主张" })).toBeInTheDocument();
+  fireEvent.click(within(decisions).getByRole("button", { name: "接受主张" }));
   expect(screen.getByRole("dialog", { name: "确认接受风险主张" })).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
@@ -134,6 +166,23 @@ test("撤销需确认，失败保留原审核状态并可重试", async () => {
 test("已生成报告时禁止在页面撤销审核", () => {
   render(<AuditWorkspacePage snapshot={{ ...snapshot, report_ready: true, claims: [{ ...snapshot.claims[0], status: "confirmed" }] }} onChanged={vi.fn()} />);
   expect(screen.getByRole("button", { name: "撤销审核，返回待审核" })).toBeDisabled();
+});
+
+test("补证表单按需展开，收起后保留草稿且提交仍绑定当前主张", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
+  expect(screen.queryByRole("textbox", { name: "补充说明" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "补充证据" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "补充说明" }), { target: { value: "补充一份虚构运行记录" } });
+  fireEvent.click(screen.getByRole("button", { name: "收起补充证据" }));
+  expect(screen.queryByRole("textbox", { name: "补充说明" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "补充证据" }));
+  expect(screen.getByRole("textbox", { name: "补充说明" })).toHaveValue("补充一份虚构运行记录");
+  expect(fetchMock).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "保存补充证据" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("补充证据已保存");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ decision: "supplement", claim_id: 1, risk_acknowledged: false, supplemental_text: "补充一份虚构运行记录" });
 });
 
 test("确认弹窗聚焦取消按钮，限制键盘焦点并支持 Escape 安全关闭", () => {

@@ -48,7 +48,6 @@ export function WorkbenchShell({ activePage, children, lockedPages = {}, onNavig
             );
           })}
         </nav>
-        <button className="settings-button" type="button">设置</button>
       </aside>
       <main className="workspace">{children}</main>
     </div>

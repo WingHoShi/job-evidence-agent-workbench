@@ -21,4 +21,5 @@ test("显示任务导航、当前页面和锁定阶段原因", () => {
   expect(screen.getByRole("button", { name: "审计报告" })).toBeDisabled();
   expect(screen.getByText("完成审核后可生成")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "任务概览" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "设置" })).not.toBeInTheDocument();
 });

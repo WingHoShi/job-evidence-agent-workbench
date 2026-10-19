@@ -55,6 +55,7 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
   const [confirmAccept, setConfirmAccept] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [supplement, setSupplement] = useState("");
+  const [showSupplement, setShowSupplement] = useState(false);
 
   const selectedClaim = snapshot.claims.find((claim) => claim.id === selectedId) ?? null;
   const assessment = selectedClaim ? snapshot.assessments[String(selectedClaim.id)] : undefined;
@@ -138,7 +139,7 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
       {snapshot.audit.status === "created" ? <section className="panel action-panel"><h2>开始审核</h2><p>提取完成后，按主张逐条确认、拒绝或补充证据。</p><button className="primary-button" type="button" onClick={startAudit} disabled={busy || !snapshot.claims.length}>开始逐条审核</button></section> : null}
       <section className="audit-grid">
         <article className="panel table-panel">
-          <div className="panel-title"><h2>能力主张</h2><span>{snapshot.claims.length} 条待核验主张</span></div>
+          <div className="panel-title"><h2>能力主张</h2><span>共 {snapshot.claims.length} 条 · 待审核 {snapshot.claims.filter((claim) => claim.status === "pending_review").length} 条</span></div>
           <div className="table-scroll"><table>
             <thead><tr><th>主张</th><th>证据数量</th><th>支持度</th><th>风险等级</th><th>审核状态</th><th>操作</th></tr></thead>
             <tbody>{snapshot.claims.map((claim) => {
@@ -161,21 +162,22 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
           <h2>主张详情</h2>
           {selectedClaim ? <>
             <div className="audit-claim-summary"><p className="detail-claim">{selectedClaim.text}</p><p className="muted-copy">来源：{selectedClaim.resume_locator}</p></div>
-            <section className="audit-detail-section">
-              <h3>候选证据</h3>
-              <ul className="audit-evidence-list">{(evidence[selectedClaim.id] || []).length ? evidence[selectedClaim.id].map((item) => <li key={item.id}><span className="audit-evidence-locator">{item.locator}</span><p>{item.text}</p></li>) : <li className="audit-empty">{evidence[selectedClaim.id] ? "已检索，没有可核验的候选证据" : "尚未加载候选证据"}</li>}</ul>
-            </section>
-            <section className={`audit-gate-panel ${gate?.requires_review ? "needs-review" : ""}`}>
-              <h3>确定性门禁</h3><p className="audit-gate-reason">{gate?.reason || "尚未运行判定"}</p>
+            <section className={`audit-gate-panel ${!gate || gate.requires_review ? "needs-review" : ""}`}>
+              <h3>审核提示</h3><p className="audit-gate-reason">{gate?.reason || "尚未运行判定"}</p>
               <p>{assessment ? `支持程度：${verdictLabel[assessment.verdict]}。${assessment.rationale}` : "运行候选证据判定后，将显示支持程度与理由。"}</p>
             </section>
-            {!assessment ? <button className="audit-button audit-button-primary" type="button" onClick={runAssessment} disabled={busy}>运行候选证据判定</button> : isCurrentAuditClaim && selectedClaim.status === "pending_review" ? <div className="audit-reassess"><button className="audit-button" type="button" onClick={runAssessment} disabled={busy}>重新判定当前主张</button><p className="muted-copy">重新判定将替换本条支持度与门禁，不改变人工审核状态；有候选材料时会调用模型。</p></div> : null}
+            {!assessment ? <button className="audit-button audit-button-primary" type="button" onClick={runAssessment} disabled={busy}>运行候选证据判定</button> : null}
             {isCurrentAuditClaim ? <div className="audit-actions">
-              <div className="audit-decision-buttons"><button className="audit-button audit-button-primary" type="button" onClick={acceptClaim} disabled={busy}>接受主张</button><button className="audit-button audit-button-danger-outline" type="button" onClick={() => setConfirmReject(true)} disabled={busy}>拒绝主张</button></div>
-              <label htmlFor="supplement">补充证据</label><textarea id="supplement" value={supplement} onChange={(event) => setSupplement(event.target.value)} placeholder="补充可核验的项目事实或材料说明" />
-              <button className="audit-button" type="button" onClick={() => submitDecision("supplement")} disabled={busy || !supplement.trim()}>保存补充证据</button>
+              <div className="audit-decision-buttons" role="group" aria-label="人工审核"><span className="audit-decision-label">人工审核</span><div className="audit-decision-controls"><button className="audit-button audit-decision-button is-accept" type="button" onClick={acceptClaim} disabled={busy}>接受主张</button><button className="audit-button audit-decision-button is-reject" type="button" onClick={() => setConfirmReject(true)} disabled={busy}>拒绝主张</button></div></div>
+              <div className="audit-secondary-actions"><button className="audit-text-action" type="button" aria-expanded={showSupplement} onClick={() => setShowSupplement(!showSupplement)} disabled={busy}>{showSupplement ? "收起补充证据" : "补充证据"}</button>{assessment && selectedClaim.status === "pending_review" ? <button className="audit-text-action" type="button" onClick={runAssessment} disabled={busy}>重新判定当前主张</button> : null}</div>
+              {assessment && selectedClaim.status === "pending_review" ? <p className="audit-operation-note">重新判定更新支持程度与审核提示，不改变人工决定；有候选材料时会调用模型。</p> : null}
+              {showSupplement ? <div className="audit-supplement-form"><label htmlFor="supplement">补充说明</label><textarea id="supplement" value={supplement} onChange={(event) => setSupplement(event.target.value)} placeholder="补充可核验的项目事实或材料说明" /><button className="audit-button" type="button" onClick={() => submitDecision("supplement")} disabled={busy || !supplement.trim()}>保存补充证据</button></div> : null}
             </div> : <p className="muted-copy">{selectedClaim.status === "pending_review" ? "请先完成当前审核主张后再处理其他条目。" : "本条已审核，可在生成报告前撤销人工决定。"}</p>}
             {selectedClaim.status !== "pending_review" ? <><button className="audit-button" type="button" onClick={() => setConfirmUndo(true)} disabled={busy || snapshot.report_ready}>撤销审核，返回待审核</button>{snapshot.report_ready ? <p className="muted-copy">已生成报告，暂不支持撤销审核。</p> : null}</> : null}
+            <section className="audit-detail-section audit-originals">
+              <div className="panel-title"><h3>候选证据</h3><span>展开核对原文</span></div>
+              <ul className="audit-evidence-list">{(evidence[selectedClaim.id] || []).length ? evidence[selectedClaim.id].map((item) => <li key={item.id}><details><summary>{item.locator}</summary><p>{item.text}</p></details></li>) : <li className="audit-empty">{evidence[selectedClaim.id] ? "已检索，没有可核验的候选证据" : "本次判定后，可在这里展开候选原文。"}</li>}</ul>
+            </section>
           </> : <p className="audit-empty">选择一条主张后查看详情。</p>}
         </article>
       </section>
