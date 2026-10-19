@@ -37,29 +37,32 @@ export function ReportWorkspacePage({ taskId, auditStatus, onGenerated }: { task
 
   return <section className="report-workspace">
     <header className="page-header"><p className="eyebrow">当前阶段</p><h1>审计报告</h1><p>只汇总已完成逐条审核的能力主张与风险结论。</p></header>
-    <section className="panel action-panel"><h2>岗位匹配与证据审计报告</h2>{!ready ? <p>完成全部主张审核后可生成报告</p> : <p>生成后可导出 Markdown，并解锁文字模拟面试。</p>}<button className="primary-button" type="button" onClick={generate} disabled={!ready || busy}>{busy ? "正在生成…" : "生成审计报告"}</button>{message ? <p role="alert">{message}</p> : null}</section>
+    {!report ? <section className="panel report-toolbar"><div><h2>岗位匹配与证据审计报告</h2>{!ready ? <p>完成全部主张审核后可生成报告</p> : <p>生成后可导出 Markdown，并解锁文字模拟面试。</p>}</div><button className="primary-button" type="button" onClick={generate} disabled={!ready || busy}>{busy ? "正在生成…" : "生成审计报告"}</button></section> : null}
+    {message ? <p className="report-warning" role="alert">{message}</p> : null}
     {report ? <div className="report-content">
-      <section className="panel report-summary">
-        <div><h2>审核摘要</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div>
-        <p>人工接受不等于证据充分；未找到证据不代表能力主张虚假。本报告不认证项目真实性或个人贡献。</p>
+      <section className="panel report-summary" aria-label="审核摘要">
+        <div className="report-toolbar"><div><p className="eyebrow">审核摘要</p><h2>岗位匹配与证据审计报告</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div><div className="report-actions"><button className="report-refresh" type="button" onClick={generate} disabled={!ready || busy}>{busy ? "正在生成…" : "刷新报告"}</button><a className="report-download" href={`/api/tasks/${taskId}/report.md`}>下载 Markdown</a></div></div>
         <div className="report-metrics">
           <span>人工接受 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已接受").length}</strong></span>
           <span>人工拒绝 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已拒绝").length}</strong></span>
           <span>需补证或复核 <strong>{report.claim_reviews.filter((item) => item.risk !== "低").length}</strong></span>
         </div>
-        <a href={`/api/tasks/${taskId}/report.md`}>下载 Markdown</a>
+        <p className="report-disclaimer">人工接受不等于证据充分；未找到证据不代表能力主张虚假。本报告不认证项目真实性或个人贡献。</p>
       </section>
       <section className="report-claims" aria-label="逐条审计结论">
         {report.claim_reviews.map((item) => <article className="panel report-claim" key={item.claim_id}>
           <h2>主张 {item.claim_id} · {item.text}</h2>
           <p className="muted-copy">简历定位：{item.resume_locator}</p>
           <div className="report-labels">
-            <span className={item.review_status === "人工已拒绝" ? "report-label danger" : "report-label"}>{item.review_status}</span>
-            <span className={item.verdict === "充分支持" ? "report-label" : "report-label warning"}>{item.verdict}</span>
-            <span className={item.risk === "低" ? "report-label" : "report-label warning"}>风险：{item.risk}</span>
+            <div><span className="report-field-label">人工决定</span><span className={item.review_status === "人工已拒绝" ? "report-label danger" : "report-label"}>{item.review_status}</span></div>
+            <div><span className="report-field-label">证据支持</span><span className={item.verdict === "充分支持" ? "report-label" : "report-label warning"}>{item.verdict}</span></div>
+            <div><span className="report-field-label">风险提示</span><span className={item.risk === "低" ? "report-label" : "report-label warning"}>风险：{item.risk}</span></div>
           </div>
           {item.warning ? <p className="report-warning">{item.warning}</p> : null}
-          <dl><dt>判定理由</dt><dd>{item.rationale}</dd><dt>确定性门禁</dt><dd>{item.gate_reason}</dd></dl>
+          <details className="report-claim-details"><summary>判定详情与建议</summary>
+            <dl><dt>判定理由</dt><dd>{item.rationale}</dd><dt>审核提示</dt><dd>{item.gate_reason}</dd></dl>
+            {item.suggestions.length ? <><h3>本条建议</h3><ul>{item.suggestions.map((text) => <li key={text}>{text}</li>)}</ul></> : null}
+          </details>
           <h3>可核验证据 · {item.evidence.length} 条</h3>
           {item.evidence.length ? <ul className="report-evidence">{item.evidence.map((evidence) => <li key={evidence.chunk_id}>
             <details><summary>[E{evidence.chunk_id}] {evidence.source_label} · {evidence.relative_path || "粘贴材料"} · {evidence.locator}</summary>
@@ -67,7 +70,6 @@ export function ReportWorkspacePage({ taskId, auditStatus, onGenerated }: { task
               <pre>{evidence.excerpt}</pre>
             </details>
           </li>)}</ul> : <p className="muted-copy">暂无合规引用；请结合判定理由补充材料。</p>}
-          {item.suggestions.length ? <><h3>本条建议</h3><ul>{item.suggestions.map((text) => <li key={text}>{text}</li>)}</ul></> : null}
         </article>)}
       </section>
       <section className="panel"><h2>岗位要求覆盖（规则初筛）</h2><p className="muted-copy">{report.jd_coverage}</p>

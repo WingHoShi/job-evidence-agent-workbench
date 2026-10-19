@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import { ReportWorkspacePage } from "./ReportWorkspacePage";
@@ -44,4 +44,23 @@ test("报告区分人工决定与证据支持度并展示来源和岗位初筛",
   expect(screen.getByText(/src\/app.py/)).toBeInTheDocument();
   expect(screen.getByText("有关联主张，证据待补")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "下载 Markdown" })).toHaveAttribute("href", "/api/tasks/7/report.md");
+  const claim = screen.getByRole("heading", { name: "主张 1 · 使用 FastAPI 和 Docker Compose" }).closest("article")!;
+  expect(within(claim).getByText("人工已接受")).toBeVisible();
+  expect(within(claim).getByText("部分支持")).toBeVisible();
+  expect(within(claim).getByText("风险：需关注")).toBeVisible();
+  expect(within(claim).getByText("人工接受不等于证据充分")).toBeVisible();
+  const detailToggle = within(claim).getByText("判定详情与建议");
+  expect(detailToggle.closest("details")).not.toHaveAttribute("open");
+  expect(within(claim).getByText("缺少编排配置")).not.toBeVisible();
+  fireEvent.click(detailToggle);
+  expect(within(claim).getByText("缺少编排配置")).toBeVisible();
+  expect(within(claim).getByText("证据不足")).toBeVisible();
+  expect(within(claim).getByText("补充 Docker Compose 配置")).toBeVisible();
+  const evidenceToggle = within(claim).getByText(/\[E8\].*src\/app.py/);
+  expect(evidenceToggle.closest("details")).not.toHaveAttribute("open");
+  fireEvent.click(evidenceToggle);
+  expect(within(claim).getByText("from fastapi import FastAPI")).toBeVisible();
+  const summary = screen.getByRole("region", { name: "审核摘要" });
+  expect(within(summary).getByRole("link", { name: "下载 Markdown" })).toBeVisible();
+  expect(within(summary).getByRole("button", { name: "刷新报告" })).toBeEnabled();
 });
