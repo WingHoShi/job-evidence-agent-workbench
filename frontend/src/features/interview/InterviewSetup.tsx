@@ -40,15 +40,19 @@ export function InterviewSetup({ taskId, onStarted }: { taskId: number; onStarte
   };
 
   return <section className="panel interview-setup">
-    <p className="eyebrow">INTERVIEW PRACTICE</p><h2>开始文字模拟面试</h2>
-    <p>默认综合模式为 5 题（含追问），围绕人工接受的主张与岗位要求练习。题数有限，不保证覆盖全部主张。</p>
-    <div className="interview-note">一次只问一题，回答后继续追问；面试中不评分，结束后统一复盘。人工接受不等于证据充分。</div>
+    <p className="eyebrow">面试准备</p><h2>开始文字模拟面试</h2>
+    <p className="interview-setup-intro">围绕人工接受的主张与岗位要求练习，默认综合模式为 5 题（含追问）。</p>
+    <div className="interview-setup-plan" role="group" aria-label={advanced ? "自定义练习安排" : "默认练习安排"}>
+      <div><span>练习题数</span><strong>{advanced ? questionCount : 5} 题（含追问）</strong></div>
+      <div><span>作答节奏</span><strong>{advanced ? `预计 ${durationMinutes} 分钟（仅参考）` : "按你的节奏作答"}</strong></div>
+      <div><span>反馈方式</span><strong>整轮结束后复盘</strong></div>
+    </div>
+    <p className="interview-setup-guidance">一次只问一题，回答后继续追问；面试中不评分、不提示答案。题数有限，不保证覆盖全部主张，人工接受也不等于证据充分。</p>
     <form onSubmit={start}>
       <label className="interview-checkbox"><input type="checkbox" checked={advanced} disabled={busy} onChange={(event) => setAdvanced(event.target.checked)} /> 使用高级设置</label>
       {advanced ? <fieldset disabled={busy}><legend>高级设置</legend><div className="interview-form-grid"><label>题数<input type="number" min="1" max="10" required value={questionCount} onChange={(event) => setQuestionCount(Number(event.target.value))} /></label><label>预计时长（分钟，仅参考）<input type="number" min="5" max="120" required value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} /></label></div><label>侧重点（用逗号分隔）<input value={focusAreas} onChange={(event) => setFocusAreas(event.target.value)} placeholder="例如：后端，项目，测试" /></label></fieldset> : null}
-      <p className="muted-copy">正常完成 N 题约需 N 次出题调用 + 1 次复盘调用；异常修正或手动重试可能增加费用。</p>
       {message ? <div className="interview-error" role="alert"><p>{message}</p><button className="interview-button" type="button" disabled={busy} onClick={() => void refresh()}>刷新开始状态</button></div> : null}
-      <button className="interview-button is-primary" type="submit" disabled={busy}>{busy ? "正在准备首题…" : "开始面试"}</button>
+      <div className="interview-setup-footer"><p className="muted-copy">正常完成 N 题约需 N 次出题调用 + 1 次复盘调用；异常修正或手动重试可能增加费用。</p><button className="interview-button is-primary" type="submit" disabled={busy}>{busy ? "正在准备首题…" : "开始面试"}</button></div>
     </form>
   </section>;
 }

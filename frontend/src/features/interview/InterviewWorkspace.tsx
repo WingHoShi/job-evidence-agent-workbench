@@ -4,6 +4,11 @@ import { InterviewSetup } from "./InterviewSetup";
 import { InterviewReviewPage } from "./InterviewReviewPage";
 import { InterviewSession, InterviewSummary, LegacyInterview, getInterview, getLegacyInterview, listInterviews, removeLocal } from "./interviewApi";
 
+const sessionStatusLabels: Record<string, string> = {
+  preparing: "首题待准备", awaiting_answer: "等待作答", generating_question: "下一题待生成",
+  ready_to_finish: "作答已完成", generating_review: "复盘待完成", completed: "已完成",
+};
+
 export function InterviewWorkspace(props: { taskId: number; reportReady: boolean; onChanged: () => void | Promise<void> }) {
   return <InterviewWorkspaceContent key={props.taskId} {...props} />;
 }
@@ -61,7 +66,10 @@ function InterviewWorkspaceContent({ taskId, reportReady, onChanged }: { taskId:
       {loading ? <p role="status" className="interview-note">正在恢复面试状态…</p> : null}
       {error ? <div className="interview-error" role="alert">{error}<button className="interview-button" type="button" onClick={() => setReload((value) => value + 1)}>重新加载面试</button></div> : null}
       {!loading && !error ? legacy ? <section className="panel interview-legacy"><h2>旧版模板面试</h2><p className="interview-note">旧版未保存复盘，无法恢复；历史仅供查看，不会自动重新生成。</p>{legacy.turns.map((turn) => <article key={turn.id}><h3>{turn.question}</h3><p>{turn.answer ?? "未回答"}</p></article>)}<button className="interview-button" type="button" onClick={() => setLegacy(null)}>返回新版面试</button></section> : session ? session.status === "completed" && session.review ? <><SavedAnswerDrafts session={session} /><InterviewReviewPage review={session.review} onRestart={() => setSession(null)} /></> : <InterviewPage key={session.id} session={session} onSessionChanged={changed} /> : <InterviewSetup taskId={taskId} onStarted={(value) => { changed(value); void Promise.resolve(onChanged()).catch(() => setError("面试已保存，任务概览刷新失败，请重新加载")); }} /> : null}
-      {!loading && history.length > 0 ? <details className="panel interview-sessions"><summary>历史面试 · {history.length} 轮</summary><div>{history.map((item) => <button className="interview-button" key={`${item.version}:${item.id}`} type="button" onClick={() => void openHistory(item)}>{item.version === 1 ? "查看旧版模板面试" : item.status === "completed" ? "查看复盘" : "继续面试"} #{item.id}</button>)}</div></details> : null}
+      {!loading && history.length > 0 ? <details className="panel interview-sessions"><summary>历史面试 · {history.length} 轮</summary><ul className="interview-session-list" aria-label="历史面试列表">{history.map((item) => {
+        const action = item.version === 1 ? "查看旧版模板面试" : item.status === "completed" ? "查看复盘" : "继续面试";
+        return <li key={`${item.version}:${item.id}`}><div className="interview-session-info"><strong>会话 #{item.id}</strong><span className="muted-copy">设定 {item.question_count} 题</span><span className="interview-session-status">{item.version === 1 ? "旧版记录" : sessionStatusLabels[item.status] ?? "状态待确认"}</span></div><button className="interview-button" aria-label={`${action} #${item.id}`} type="button" onClick={() => void openHistory(item)}>{action}</button></li>;
+      })}</ul></details> : null}
     </>}
   </section>;
 }
