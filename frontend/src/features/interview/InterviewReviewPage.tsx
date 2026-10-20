@@ -1,4 +1,5 @@
 import type { InterviewReview, ReviewPoint } from "./interviewApi";
+import { InterviewReviewExport } from "./InterviewReviewExport";
 
 export function InterviewReviewPage({ review, onRestart }: { review: InterviewReview; onRestart?: () => void }) {
   const steps = review.next_steps.filter((point, index, all) => all.findIndex((value) => value.text.trim() === point.text.trim()) === index);
@@ -9,7 +10,7 @@ export function InterviewReviewPage({ review, onRestart }: { review: InterviewRe
   ];
   const references = (ids: number[]) => <ReferenceList ids={ids} review={review} />;
   return <section className="interview-review">
-    <section className="panel"><div className="interview-progress"><p className="eyebrow">INTERVIEW REVIEW</p><span className="interview-chip">{review.summary.partial ? "部分完成" : "完整一轮"}</span></div><h2>本轮面试复盘</h2><p>{review.notice}</p><div className="interview-metrics"><div><strong>{review.summary.answered_count}</strong><span>已回答</span></div><div><strong>{review.summary.unanswered_count}</strong><span>已出题未回答</span></div><div><strong>{review.summary.covered_claim_ids.length}</strong><span>已练习主张</span></div></div>{review.summary.context_truncated ? <p className="interview-note">部分上下文因预算缩减，分析只依据保留的信息。</p> : null}{onRestart ? <button className="interview-button is-primary" onClick={onRestart}>再练一轮</button> : null}</section>
+    <section className="panel"><div className="interview-progress"><p className="eyebrow">INTERVIEW REVIEW</p><span className="interview-chip">{review.summary.partial ? "部分完成" : "完整一轮"}</span></div><h2>本轮面试复盘</h2><p>{review.notice}</p><div className="interview-metrics"><div><strong>{review.summary.answered_count}</strong><span>已回答</span></div><div><strong>{review.summary.unanswered_count}</strong><span>已出题未回答</span></div><div><strong>{review.summary.covered_claim_ids.length}</strong><span>已练习主张</span></div></div>{review.summary.context_truncated ? <p className="interview-note">部分上下文因预算缩减，分析只依据保留的信息。</p> : null}<InterviewReviewExport review={review} onRestart={onRestart} /></section>
     <section className="panel interview-review-summary"><h2>总体结论</h2><p>{review.overall_summary ?? (review.summary.answered_count ? "旧复盘未保存总体结论，请查看原有逐题分析；不会自动重新生成。" : "尚无可分析回答，不生成能力评价。")}</p><section aria-label="优先学习"><h3>优先学习</h3>{steps.length ? <ol>{steps.slice(0, 3).map((point) => <li key={point.text}>{point.text}{references(point.evidence_ids)}</li>)}</ol> : <p className="muted-copy">暂无有依据的学习建议。</p>}</section>{steps.length > 3 ? <details><summary>其余学习建议</summary><ul>{steps.slice(3).map((point) => <li key={point.text}>{point.text}{references(point.evidence_ids)}</li>)}</ul></details> : null}</section>
     <section className="panel"><h2>逐题复盘</h2>{review.turn_reviews.length ? review.turn_reviews.map((item) => {
       const turn = review.turns.find((value) => value.id === item.turn_id);

@@ -380,6 +380,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .interview-turn-review > summary, .interview-review-summary summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .interview-review-summary > p { background: #f4f8fd; border-left: 3px solid var(--primary); padding: 16px 20px; }
 .interview-review-summary li { margin: 8px 0; }
+.interview-review-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.interview-export-options { display: grid; gap: 16px; margin-top: 20px; padding: 22px; border: 1px solid var(--border); border-radius: 9px; background: #f7fafd; }
+.interview-export-options h3 { margin: 0 0 8px; font-size: 15px; }
+.interview-export-options p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.interview-export-options .interview-export-privacy { color: #685a43; }
+.interview-export-options label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.interview-export-options input { margin: 0; accent-color: var(--primary); }
+.interview-export-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
+.interview-export-footer span { color: var(--muted); font-size: 12px; }
 .task-switcher { display: grid; gap: 8px; padding: 14px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border); min-width: 0; }
 .task-switcher p, .task-switcher label { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .task-switcher button { padding: 8px; min-height: 36px; font-size: 13px; }
