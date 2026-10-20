@@ -60,16 +60,39 @@
 
 Windows 用户先按 [Docker Desktop 官方安装说明](https://docs.docker.com/desktop/setup/install/windows-install/) 完成安装和必要的 WSL 2 / 虚拟化配置。打开 Docker Desktop，等待 Linux 容器引擎就绪。其他系统需要可用的 Docker Engine 和 Compose。
 
-下载本仓库并解压，或使用 Git 克隆。在项目根目录打开终端，运行：
+下载本仓库并解压，或使用 Git 克隆。Windows 用户建议使用下面的快捷入口；首次安装仍需要下载依赖和构建应用，耗时取决于网络。
+
+### 2. 首次启动与初始化
+
+Windows 用户在项目根目录打开 PowerShell，运行：
+
+```powershell
+.\"Start Workbench.cmd" -Build -InitializeInterviews
+```
+
+启动器会检查本机 Docker 和 Compose、构建应用，再检查面试表是否已初始化。需要初始化时，会先说明影响；输入 **`INITIALIZE`** 确认后，才停止本项目、备份业务数据库并添加面试表，成功后重新启动。已有任务和记录不会被清空；已初始化时会跳过这一步。
+
+首次完成后会自动打开网页。日常使用只需先打开 Docker Desktop，再双击项目目录内的 **`Start Workbench.cmd`**；不会重新构建、下载镜像或执行初始化。
+
+如果 Docker 尚未就绪，请先手动打开并等待 Linux 引擎运行，再重试。非标准安装路径可显式指定，例如：
+
+```powershell
+.\"Start Workbench.cmd" -DockerPath "D:\Docker\resources\bin\docker.exe"
+```
+
+只有更新代码且需要重新构建时才使用 `-Build`。初始化失败时，应用会保持停止状态，请保留报错和 `data/backups/` 下的备份，不要反复重试或删除数据。若检测到面试表不完整，启动器会停止后续操作，要求先排查。
+
+<details>
+<summary>其他系统或希望手动执行？展开安装与初始化命令</summary>
+
+在项目根目录打开终端，运行：
 
 ```powershell
 docker compose up -d --build
 docker compose ps
 ```
 
-首次需要下载依赖和构建应用，耗时取决于网络。确认 <http://127.0.0.1:8001/api/health> 能显示状态信息，再进行下一步。
-
-### 2. 完成首次初始化
+确认 <http://127.0.0.1:8001/api/health> 能显示状态信息，再进行初始化。
 
 这一步用于启用模拟面试，只需在首次安装时完成。先停止应用，再运行初始化命令；命令会先检查并备份已有业务数据：
 
@@ -85,6 +108,8 @@ docker compose up -d --no-build app
 ```
 
 如果初始化失败，保留报错和备份，先排查原因，不继续后续启动命令，也不要删除数据库。日常启动无需重复初始化。
+
+</details>
 
 ### 3. 填写自己的模型 API
 
@@ -108,7 +133,7 @@ docker compose up -d --no-build app
 
 创建任务 → 导入材料 → 提取简历表述 → 逐条判定与人工审核 → 查看报告 → 开始面试 → 结束并查看复盘。
 
-日常使用时，先打开 Docker Desktop，再在原项目目录执行：
+日常使用时，Windows 用户先打开 Docker Desktop，再双击 **`Start Workbench.cmd`**。其他系统或手动启动可在原项目目录执行：
 
 ```powershell
 docker compose up -d --no-build app
@@ -117,6 +142,10 @@ docker compose up -d --no-build app
 然后访问 <http://127.0.0.1:8001>。关闭浏览器不会停止后台服务。
 
 ## 常见问题
+
+**快捷启动找不到 Docker 或容器怎么办？**
+
+需要先安装并打开 Docker Desktop，使用 Linux 容器模式；启动器不会自动安装 Docker、修改你的 Docker 配置或连接远程引擎。支持 PATH 和常见安装目录查找，自定义目录可用 `-DockerPath` 指定。首次下载尚无容器时，按上面的首次启动命令操作，不要删除数据来解决。
 
 **导入只成功了一部分，或网络中断怎么办？**
 
