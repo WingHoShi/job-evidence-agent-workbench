@@ -152,7 +152,7 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   return (
     <WorkbenchShell taskControls={taskControls} activePage={activePage} lockedPages={lockedPages} onNavigate={setActivePage}>
       {message ? <div className="panel"><p role="alert">{message}</p><button type="button" disabled={loading} onClick={() => void loadTask(snapshot.id)}>{loading ? "正在重试…" : "重试读取任务"}</button></div> : null}
-      {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} onChanged={() => { void refreshTask(snapshot.id).catch(() => setMessage("材料已导入，但任务状态刷新失败，请稍后刷新页面")); }} /> : null}
+      {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "overview" ? <TaskOverviewPage snapshot={snapshot} onNavigate={setActivePage} /> : null}
       {activePage === "audit" ? <AuditWorkspacePage snapshot={snapshot} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "report" ? <ReportWorkspacePage taskId={snapshot.id} auditStatus={snapshot.audit.status} onGenerated={() => refreshTask(snapshot.id)} /> : null}

@@ -114,6 +114,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .material-next-action button { flex-shrink: 0; }
 .material-feedback { margin: 16px 0 0; padding: 10px 12px; border-radius: 7px; border: 1px solid #cbe1d6; background: #f0f8f4; color: #286848; overflow-wrap: anywhere; }
 .material-feedback.is-error { border-color: #f1d5d5; background: #fff4f4; color: #a63d43; }
+.material-import-controls { min-width: 0; margin: 0; padding: 0; border: 0; }
+.material-progress { margin: 16px 0 0; padding: 12px 14px; border: 1px solid #ccddf0; border-radius: 7px; color: var(--primary); background: #f1f6fc; font-size: 13px; }
+.material-feedback.is-warning { border-color: #e7dbc5; background: #fcf8f0; color: #7b6038; }
+.material-import-details { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 7px; background: #fafcfe; font-size: 13px; }
+.material-import-details summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.material-import-details p { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.material-import-details h3 { margin: 14px 0 6px; font-size: 12px; color: var(--muted); }
+.material-import-details ul { max-height: 200px; overflow-y: auto; margin: 0; padding-left: 18px; }
+.material-import-details li { margin: 4px 0; overflow-wrap: anywhere; }
+.material-refresh { margin-top: 12px; }
 .task-create-panel { max-width: 560px; display: grid; gap: 16px; }
 .task-create-panel form, .paste-import { display: grid; gap: 10px; }
 .task-create-panel input, .paste-import input, .paste-import textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #fff; }

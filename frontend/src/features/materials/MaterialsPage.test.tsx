@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { MaterialsPage } from "./MaterialsPage";
+
+afterEach(() => vi.unstubAllGlobals());
 
 test("导入文件后显示导入数量并通知任务刷新", async () => {
   const onChanged = vi.fn();
@@ -58,7 +60,7 @@ test("切换到粘贴方式后按所选材料类型提交原内容", async () =>
   fireEvent.change(screen.getByLabelText("材料名称"), { target: { value: "岗位" } });
   fireEvent.change(screen.getByLabelText("粘贴材料"), { target: { value: "开发知识库问答服务" } });
   fireEvent.click(screen.getByRole("button", { name: "导入粘贴材料" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("粘贴材料已导入");
+  expect(await screen.findByText("粘贴材料已导入")).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/tasks/7/sources/text", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kind: "job_description", label: "岗位", text: "开发知识库问答服务" }),
@@ -101,4 +103,105 @@ test("材料就绪后可以提取能力主张并刷新任务", async () => {
   expect(await screen.findByText("已提取 0 条能力主张")).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/tasks/7/claims/generate", { method: "POST" });
   expect(onChanged).toHaveBeenCalledOnce();
+});
+
+test("文件导入中锁定入口和材料类型，重复操作不会再发送请求", async () => {
+  let finish!: (response: Response) => void;
+  const fetch = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  vi.stubGlobal("fetch", fetch);
+  render(<MaterialsPage taskId={7} sources={[{ id: 1, kind: "resume", label: "简历", relative_path: "resume.md" }]} onChanged={vi.fn()} />);
+  const input = screen.getByLabelText("批量选择文件");
+  const file = new File(["demo"], "demo.md");
+  fireEvent.change(input, { target: { files: [file] } });
+  expect(screen.getByRole("status")).toHaveTextContent("正在导入 1 个文件");
+  expect(input).toBeDisabled(); expect(screen.getByLabelText("材料类型")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "粘贴文本" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "提取能力主张" })).toBeDisabled();
+  fireEvent.change(input, { target: { files: [file] } });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await act(async () => finish(new Response(JSON.stringify({ imported_count: 1, skipped_paths: [], errors: [] }))));
+  expect(input).toBeEnabled();
+  expect(await screen.findByText("已导入 1 个文件")).toBeInTheDocument();
+});
+
+test("部分导入显示成功和跳过计数、错误条数，明细默认折叠且不重复累计失败", async () => {
+  const onChanged = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ imported_count: 2, skipped_paths: ["demo/.env", "demo/broken.pdf"], errors: ["demo/broken.pdf: 无法提取文本"] }))));
+  render(<MaterialsPage taskId={7} sources={[]} onChanged={onChanged} />);
+  fireEvent.change(screen.getByLabelText("批量选择文件"), { target: { files: ["app.py", "README.md", ".env", "broken.pdf"].map((name) => new File(["demo"], name)) } });
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("已导入 2 个文件"); expect(alert).toHaveTextContent("已跳过 2 个文件"); expect(alert).toHaveTextContent("1 条错误信息");
+  expect(screen.getByText(/解析失败的文件也计入跳过数量/)).toBeInTheDocument();
+  const details = screen.getByText("查看跳过与错误明细").closest("details");
+  expect(details).not.toHaveAttribute("open");
+  fireEvent.click(screen.getByText("查看跳过与错误明细"));
+  expect(screen.getByText("demo/broken.pdf: 无法提取文本")).toBeVisible();
+  expect(onChanged).toHaveBeenCalledOnce();
+});
+
+test.each(["network", "json", "shape", "http"])("未确认导入结果（%s）不假称成功或自动重传，允许只刷新列表", async (failure) => {
+  const fetch = vi.fn(async () => {
+    if (failure === "network") throw new Error("network interrupted");
+    if (failure === "json") return new Response("broken JSON");
+    if (failure === "http") return new Response(JSON.stringify({ detail: "internal" }), { status: 500 });
+    return new Response(JSON.stringify({ imported_count: 1 }));
+  });
+  vi.stubGlobal("fetch", fetch); const onChanged = vi.fn();
+  render(<MaterialsPage taskId={7} sources={[]} onChanged={onChanged} />);
+  fireEvent.change(screen.getByLabelText("批量选择文件"), { target: { files: [new File(["demo"], "demo.md")] } });
+  expect(await screen.findByRole("alert")).toHaveTextContent("未能确认本次导入结果");
+  expect(screen.getByRole("alert")).toHaveTextContent("不要直接重复上传");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "刷新材料列表" }));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test("导入已确认但刷新失败时保留成功结果，只重试刷新而不是再上传", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ imported_count: 1, skipped_paths: [], errors: [] })));
+  const onChanged = vi.fn().mockRejectedValueOnce(new Error("refresh failed")).mockResolvedValue(undefined);
+  vi.stubGlobal("fetch", fetch);
+  render(<MaterialsPage taskId={7} sources={[]} onChanged={onChanged} />);
+  fireEvent.change(screen.getByLabelText("批量选择文件"), { target: { files: [new File(["demo"], "demo.md")] } });
+  expect(await screen.findByText("已导入 1 个文件")).toBeInTheDocument();
+  expect(await screen.findByRole("alert")).toHaveTextContent("材料已保存，但列表刷新失败");
+  fireEvent.click(screen.getByRole("button", { name: "刷新材料列表" }));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(2));
+  expect(fetch).toHaveBeenCalledOnce();
+  await waitFor(() => expect(screen.queryByText(/列表刷新失败/)).not.toBeInTheDocument());
+});
+
+test("粘贴导入等待时防止重复提交，网络中断保留草稿并提示核对", async () => {
+  let fail!: (reason: Error) => void;
+  const fetch = vi.fn(() => new Promise((_resolve, reject) => { fail = reject; }));
+  vi.stubGlobal("fetch", fetch);
+  render(<MaterialsPage taskId={7} sources={[]} onChanged={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "粘贴文本" }));
+  fireEvent.change(screen.getByLabelText("材料名称"), { target: { value: "我的说明" } });
+  fireEvent.change(screen.getByLabelText("粘贴材料"), { target: { value: "需要保留的草稿" } });
+  const submit = screen.getByRole("button", { name: "导入粘贴材料" });
+  fireEvent.click(submit); fireEvent.click(submit);
+  expect(fetch).toHaveBeenCalledOnce(); expect(screen.getByLabelText("粘贴材料")).toBeDisabled();
+  await act(async () => fail(new Error("offline")));
+  expect(await screen.findByRole("alert")).toHaveTextContent("未能确认本次导入结果");
+  expect(screen.getByLabelText("材料名称")).toHaveValue("我的说明");
+  expect(screen.getByLabelText("粘贴材料")).toHaveValue("需要保留的草稿");
+});
+
+test("全部跳过时不伪装成功入库，错误明细可见且可重新选择同名文件", async () => {
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ imported_count: 0, skipped_paths: ["broken.pdf"], errors: ["broken.pdf: 无法解析"] })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ imported_count: 1, skipped_paths: [], errors: [] })));
+  vi.stubGlobal("fetch", fetch);
+  render(<MaterialsPage taskId={7} sources={[]} onChanged={vi.fn()} />);
+  const input = screen.getByLabelText("批量选择文件");
+  const file = new File(["demo"], "broken.pdf");
+  fireEvent.change(input, { target: { files: [file] } });
+  expect(await screen.findByRole("alert")).toHaveTextContent("已导入 0 个文件");
+  await waitFor(() => expect(input).toBeEnabled());
+  expect(input).toHaveValue("");
+  fireEvent.change(input, { target: { files: [file] } });
+  expect(await screen.findByText("已导入 1 个文件")).toBeInTheDocument();
+  expect(screen.queryByText("查看跳过与错误明细")).not.toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
