@@ -96,6 +96,39 @@ def review_input():
     return build_review_input(snapshot(), [TurnView(id=7, ordinal=1, question="接口怎么做？", kind="main", claim_id=1, followup_of_turn_id=None, answer="不清楚", evidence_ids=[4])])
 
 
+@pytest.mark.parametrize("repair", [False, True])
+def test_mixed_answers_and_limited_off_topic_information_survive_review_transport(repair):
+    answers = ["这部分我不清楚。", "这个我也不会，希望先从基础概念开始。",
+               "FastAPI 是用于构建 Web API 的 Python 框架；具体路由和部署过程我还不能完整解释。"]
+    questions = ["/health 怎么实现？", "健康检查有什么作用？", "Docker Compose 有什么作用？"]
+    turns = [TurnView(id=i + 7, ordinal=i + 1, question=question, kind="main",
+                      claim_id=1, followup_of_turn_id=None, answer=answer, evidence_ids=[4])
+             for i, (question, answer) in enumerate(zip(questions, answers))]
+    context = build_review_input(snapshot(), turns)
+    before = context.model_dump_json()
+    review = concise_review() | {"overall_summary": "前两题明确不会；第三题能说明 FastAPI 用途，但未回答 Compose 作用。"}
+    review["turn_reviews"] = [concise_review()["turn_reviews"][0] | {"turn_id": turn.id}
+                              for turn in turns]
+    review["turn_reviews"][2] |= {
+        "strengths": ["能说明 FastAPI 是构建 Web API 的 Python 框架"],
+        "missing_details": ["未回答 Docker Compose 的作用"],
+    }
+    replies = [completion({"invalid": True}), completion(review)] if repair else [completion(review)]
+    with patch("job_evidence_agent.model_client.httpx.post", side_effect=replies) as post:
+        result = OpenAICompatibleClient().generate_interview_review(CONFIG, context)
+    assert post.call_count == (2 if repair else 1)
+    for call in post.call_args_list:
+        sent = json.loads(call.kwargs["json"]["messages"][1]["content"])
+        assert [turn["answer"] for turn in sent["turns"]] == answers
+        assert [turn["question"] for turn in sent["turns"]] == questions
+        assert call.kwargs["json"]["max_tokens"] == 6000
+    assert context.model_dump_json() == before
+    assert result.value.overall_summary == review["overall_summary"]
+    assert result.value.turn_reviews[2].strengths == review["turn_reviews"][2]["strengths"]
+    assert result.value.turn_reviews[2].missing_details == ["未回答 Docker Compose 的作用"]
+    assert [item.turn_id for item in result.value.turn_reviews] == [7, 8, 9]
+
+
 @pytest.mark.parametrize("field,value", [("missing_details", ["长" * 61]), ("suggestions", ["建议一", "建议二"])])
 def test_verbose_turn_review_is_repaired_without_dropping_answered_turn(field, value):
     verbose = concise_review()
