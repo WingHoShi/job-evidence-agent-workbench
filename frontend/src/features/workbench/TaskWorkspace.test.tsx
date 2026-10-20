@@ -96,6 +96,29 @@ test("实际输入面试草稿后切换任务再返回，回答恢复且审核�
   expect(writes).toEqual([]);
 });
 
+test("面试中打开并关闭模型设置保留当前题目与未提交草稿，不写任务数据", async () => {
+  const writes: string[] = [];
+  const session = sessionFixture({ task_id: 9 });
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (options?.method && options.method !== "GET") writes.push(url);
+    const body = url === "/api/setup/status" ? { configured: true, base_url: "https://example.com/v1", model_name: "test-model" } :
+      url === "/api/v2/tasks/9/interviews" ? [{ id: session.id, task_id: 9, version: 2, status: session.status, question_count: 2 }] :
+      url === `/api/v2/interviews/${session.id}` ? session :
+      { ...savedTask, report_ready: true, audit: { ...savedTask.audit, status: "completed" } };
+    return Promise.resolve(jsonResponse(body));
+  }));
+  render(<TaskWorkspace initialTaskId={9} />);
+  await screen.findByText("当前任务 #9");
+  fireEvent.click(screen.getByRole("button", { name: "模拟面试" }));
+  fireEvent.change(await screen.findByRole("textbox"), { target: { value: "打开设置前的面试草稿" } });
+  fireEvent.click(screen.getByRole("button", { name: "模型设置" }));
+  await screen.findByDisplayValue("test-model");
+  fireEvent.click(screen.getByRole("button", { name: "关闭设置" }));
+  expect(screen.getByRole("textbox")).toHaveValue("打开设置前的面试草稿");
+  expect(screen.getByRole("button", { name: "提交回答" })).toBeEnabled();
+  expect(writes).toEqual([]);
+});
+
 test("选中任务读取失败后仍可切回原任务", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(
     url === "/api/tasks" ? jsonResponse([savedTask, { ...savedTask, id: 4 }]) :

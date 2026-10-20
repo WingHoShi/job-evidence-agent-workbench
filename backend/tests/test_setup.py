@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from job_evidence_agent.app import create_app
 from job_evidence_agent.model_client import ModelConnectionError
+from job_evidence_agent.settings import ModelConfig, ModelConfigStore
 
 
 class FailingModelClient:
@@ -78,4 +79,33 @@ def test_successful_setup_saves_config_and_only_returns_safe_status(tmp_path: Pa
     assert config_path.is_file()
     assert "sk-secret-value" in config_path.read_text(encoding="utf-8")
     assert "sk-secret-value" not in response.text
+
+
+def test_rejected_replacement_preserves_existing_config_bytes(tmp_path: Path) -> None:
+    config_path = tmp_path / "model.env"
+    store = ModelConfigStore(config_path)
+    store.save(ModelConfig.create(base_url="https://example.com/v1", model_name="old-model", api_key="fictional-old-key"))
+    before = config_path.read_bytes()
+    client = TestClient(create_app(config_path=config_path, model_client=FailingModelClient()))
+    response = client.post("/api/setup", json={"base_url": "https://new.example.com/v1", "model_name": "new-model", "api_key": "fictional-new-key"})
+    assert response.status_code == 400
+    assert config_path.read_bytes() == before
+    status = client.get("/api/setup/status")
+    assert status.json() == {"configured": True, "base_url": "https://example.com/v1", "model_name": "old-model"}
+    assert "fictional-old-key" not in status.text
+
+
+def test_testing_replacement_does_not_save_existing_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "model.env"
+    store = ModelConfigStore(config_path)
+    store.save(ModelConfig.create(base_url="https://example.com/v1", model_name="old-model", api_key="fictional-old-key"))
+    before = config_path.read_bytes()
+    model_client = SuccessfulModelClient()
+    client = TestClient(create_app(config_path=config_path, model_client=model_client))
+    response = client.post("/api/setup/test", json={"base_url": "https://new.example.com/v1", "model_name": "new-model", "api_key": "fictional-new-key"})
+    assert response.status_code == 200
+    assert response.json()["model_name"] == "new-model"
+    assert model_client.received_config.model_name == "new-model"
+    assert config_path.read_bytes() == before
+    assert client.get("/api/setup/status").json()["model_name"] == "old-model"
 

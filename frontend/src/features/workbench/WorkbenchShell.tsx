@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { ModelSettingsDialog } from "../setup/ModelSettingsDialog";
 
 export type WorkspacePage = "overview" | "materials" | "audit" | "report" | "interview";
 
@@ -19,8 +20,15 @@ const navigation: { id: WorkspacePage; label: string }[] = [
 ];
 
 export function WorkbenchShell({ activePage, children, lockedPages = {}, onNavigate, taskControls }: WorkbenchShellProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (!settingsOpen && wasOpen.current) settingsButton.current?.focus();
+    wasOpen.current = settingsOpen;
+  }, [settingsOpen]);
   return (
-    <div className="app-shell">
+    <><div className="app-shell" inert={settingsOpen}>
       <aside className="sidebar">
         <div className="brand">
           <strong>求职证据审计</strong>
@@ -48,8 +56,9 @@ export function WorkbenchShell({ activePage, children, lockedPages = {}, onNavig
             );
           })}
         </nav>
+        <div className="sidebar-settings"><button ref={settingsButton} className="nav-button" type="button" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>模型设置</button></div>
       </aside>
       <main className="workspace">{children}</main>
-    </div>
+    </div>{settingsOpen ? <ModelSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}</>
   );
 }
