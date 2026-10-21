@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from dataclasses import replace
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from job_evidence_agent.database import SQLiteRepository
@@ -79,6 +79,21 @@ def create_tasks_router(
             "report_ready": repository.has_generated_report(task.id),
             "audit": {**audit, "events": workflow.events(task.id), "recoverable": audit["status"] == "awaiting_review"},
         }
+
+    @router.get("/{task_id}/sources/{source_id}/chunks")
+    def preview_source(
+        task_id: int, source_id: int,
+        offset: int = Query(default=0, ge=0, le=2147483647),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> dict[str, object]:
+        require_task(repository, task_id)
+        source = next((item for item in repository.list_sources(task_id) if item.id == source_id), None)
+        if source is None:
+            raise HTTPException(status_code=404, detail="材料不存在")
+        total, chunks = repository.preview_chunks(source_id, offset, limit)
+        return {"task_id": task_id, "source": source_to_response(source),
+                "total": total, "offset": offset, "limit": limit,
+                "chunks": [evidence_to_response(chunk) for chunk in chunks]}
 
     @router.post("/{task_id}/sources/import")
     async def import_files(

@@ -1,8 +1,8 @@
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
 
 import { Source } from "../workbench/types";
+import { MaterialLibrary } from "./MaterialLibrary";
 
-const sourceKindLabels: Record<string, string> = { resume: "简历", job_description: "岗位描述", project: "项目材料", supplement: "补充说明" };
 type ImportResult = { imported_count: number; skipped_paths: string[]; errors: string[] };
 function isImportResult(value: unknown): value is ImportResult {
   const result = value as ImportResult | null;
@@ -154,14 +154,7 @@ export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; 
           {refreshFailed ? <p className="material-feedback is-error" role="alert">{uncertain ? "材料列表刷新失败，导入结果仍未确认。" : `${refreshSubject}，但列表刷新失败，请先刷新列表，不要重复提交。`}</p> : null}
           {uncertain || refreshFailed ? <button className="interview-button material-refresh" type="button" disabled={Boolean(busy) || refreshing} onClick={() => void refreshMaterials()}>{refreshing ? "正在刷新…" : "刷新材料列表"}</button> : null}
         </article>
-        <article className="panel material-list">
-          <div className="panel-title"><h2>已导入材料</h2><span className="material-count">{sources.length} 份材料</span></div>
-          <p className="muted-copy">简历用于提取主张，项目材料用于核验，岗位描述用于岗位对照。</p>
-          {sources.length ? <ul>{sources.map((source) => <li key={source.id}>
-            <div className="material-file"><strong>{source.label}</strong><span>{source.relative_path}</span></div>
-            <span className="material-kind">{sourceKindLabels[source.kind] || source.kind}</span>
-          </li>)}</ul> : <div className="material-empty"><strong>还没有材料</strong><p>从左侧导入简历、岗位描述或项目文件。</p></div>}
-        </article>
+        <MaterialLibrary key={taskId} taskId={taskId} sources={sources} />
       </section>
       <section className="panel material-next-action">
         <div><p className="eyebrow">下一步</p><h2>提取能力主张</h2><p className="muted-copy">仅从简历提取既有主张，项目材料用于核验，不会新增经历。</p></div>

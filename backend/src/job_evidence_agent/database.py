@@ -108,6 +108,19 @@ class SQLiteRepository:
             ).fetchall()
         return [EvidenceChunk(*row) for row in rows]
 
+    def preview_chunks(self, source_id: int, offset: int, limit: int) -> tuple[int, list[EvidenceChunk]]:
+        with self._connect() as connection:
+            connection.execute("BEGIN")
+            total = connection.execute(
+                "SELECT count(*) FROM evidence_chunks WHERE source_id = ?", (source_id,)
+            ).fetchone()[0]
+            rows = connection.execute(
+                """SELECT id, source_id, text, locator, language FROM evidence_chunks
+                   WHERE source_id = ? ORDER BY id LIMIT ? OFFSET ?""",
+                (source_id, limit, offset),
+            ).fetchall()
+        return total, [EvidenceChunk(*row) for row in rows]
+
     def search_chunks(self, task_id: int, query: str, limit: int) -> list[EvidenceChunk]:
         terms = [term for term in query.replace("/", " ").split() if term]
         if not terms:

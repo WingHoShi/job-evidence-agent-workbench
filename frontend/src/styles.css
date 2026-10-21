@@ -99,6 +99,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .material-file span { color: var(--muted); font-size: 12px; }
 .material-kind { flex-shrink: 0; border-radius: 5px; background: #edf3fa; color: #365d88; font-size: 12px; padding: 3px 8px; }
 .material-count { white-space: nowrap; }
+.material-library-filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 12px; margin-top: 6px; }
+.material-library-filters label { min-width: 0; font-size: 12px; color: var(--muted); font-weight: 400; }
+.material-library-summary { display: flex; justify-content: space-between; align-items: center; min-height: 34px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.material-text-button { border: 0; padding: 5px 2px; background: transparent; color: var(--primary); font-size: 12px; }
+.material-text-button:hover:not(:disabled) { text-decoration: underline; }
+.material-list .material-source-list { margin-top: 4px; max-height: 300px; }
+.material-list .material-source-list li { padding: 12px 8px; gap: 12px; border-radius: 5px; align-items: center; }
+.material-source-list li.is-selected { background: #f0f5fc; }
+.material-source-button { min-width: 0; flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.material-source-button strong { font-size: 13px; font-weight: 600; }
+.material-source-action { flex-shrink: 0; color: var(--primary); font-size: 12px; }
+.material-preview { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); min-width: 0; }
+.material-preview-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.material-preview-heading > div { min-width: 0; }
+.material-preview-heading .eyebrow { margin: 0 0 4px; font-size: 11px; }
+.material-preview-heading h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.material-preview-heading button { flex-shrink: 0; }
+.material-preview-note { margin: 10px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.material-preview-count, .material-chunk-locator { color: var(--muted); font-size: 12px; }
+.material-preview-chunks { max-height: 330px; overflow-y: auto; border: 1px solid #e3eaf3; border-radius: 7px; background: #f8fafd; }
+.material-preview-chunks article { padding: 14px; }
+.material-preview-chunks article + article { border-top: 1px solid var(--border); }
+.material-chunk-locator { margin: 0 0 8px; overflow-wrap: anywhere; }
+.material-preview-chunks pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.8 Consolas, "Microsoft YaHei", monospace; color: #30455e; }
+.material-preview-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--muted); font-size: 12px; }
+@media (max-width: 1150px) { .material-library-filters { grid-template-columns: minmax(0, 1fr); gap: 0; } .material-source-action { font-size: 11px; } }
 .materials-workspace .muted-copy { margin: 8px 0 0; font-size: 13px; }
 .import-modes { display: flex; gap: 4px; margin: 20px 0 16px; padding: 4px; background: #f0f4f9; border: 1px solid #e5ebf3; border-radius: 9px; }
 .import-modes button { flex: 1; border: 0; border-radius: 6px; padding: 8px; color: var(--muted); background: transparent; font-weight: 600; }
