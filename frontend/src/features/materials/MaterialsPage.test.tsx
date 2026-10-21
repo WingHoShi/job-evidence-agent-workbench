@@ -94,13 +94,13 @@ test("材料列表使用中文类型并在列表标题旁展示数量", () => {
 
 test("材料就绪后可以提取能力主张并刷新任务", async () => {
   const onChanged = vi.fn();
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 1 }] });
   vi.stubGlobal("fetch", fetchMock);
 
   render(<MaterialsPage taskId={7} sources={[{ id: 1, kind: "resume", label: "简历", relative_path: "pasted/简历.txt" }]} onChanged={onChanged} />);
   fireEvent.click(screen.getByRole("button", { name: "提取能力主张" }));
 
-  expect(await screen.findByText("已提取 0 条能力主张")).toBeInTheDocument();
+  expect(await screen.findByText("已提取 1 条能力主张")).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/tasks/7/claims/generate", { method: "POST" });
   expect(onChanged).toHaveBeenCalledOnce();
 });

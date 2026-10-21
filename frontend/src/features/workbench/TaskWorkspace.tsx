@@ -23,6 +23,7 @@ function readActiveTaskId(): number | undefined {
 export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   const [taskId, setTaskId] = useState(() => initialTaskId ?? readActiveTaskId());
   const [snapshot, setSnapshot] = useState<TaskSnapshot | null>(null);
+  const [confirmedClaimCounts, setConfirmedClaimCounts] = useState<Record<number, number>>({});
   const [activePage, setActivePage] = useState<WorkspacePage>("overview");
   const [loading, setLoading] = useState(Boolean(taskId));
   const [message, setMessage] = useState<string | null>(null);
@@ -152,7 +153,7 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   return (
     <WorkbenchShell taskControls={taskControls} activePage={activePage} lockedPages={lockedPages} onNavigate={setActivePage}>
       {message ? <div className="panel"><p role="alert">{message}</p><button type="button" disabled={loading} onClick={() => void loadTask(snapshot.id)}>{loading ? "正在重试…" : "重试读取任务"}</button></div> : null}
-      {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} onChanged={() => refreshTask(snapshot.id)} /> : null}
+      {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} claimCount={Math.max(snapshot.claims.length, confirmedClaimCounts[snapshot.id] ?? 0)} needsClaimRefresh={(confirmedClaimCounts[snapshot.id] ?? 0) > snapshot.claims.length} onClaimsGenerated={(count) => setConfirmedClaimCounts((previous) => ({ ...previous, [snapshot.id]: count }))} onReview={() => setActivePage("audit")} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "overview" ? <TaskOverviewPage snapshot={snapshot} onNavigate={setActivePage} /> : null}
       {activePage === "audit" ? <AuditWorkspacePage snapshot={snapshot} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "report" ? <ReportWorkspacePage taskId={snapshot.id} auditStatus={snapshot.audit.status} onGenerated={() => refreshTask(snapshot.id)} /> : null}

@@ -146,10 +146,17 @@ def create_tasks_router(
     @router.post("/{task_id}/claims/generate")
     def generate_claims(task_id: int) -> list[dict[str, object]]:
         require_task(repository, task_id)
+        existing = repository.list_claims(task_id)
+        if existing:
+            return [claim_to_response(claim) for claim in existing]
         sources = repository.list_sources(task_id)
+        if not any(source.kind == "resume" for source in sources):
+            raise HTTPException(status_code=422, detail="请先导入简历，再提取能力主张。")
         resume_chunks = [chunk for source in sources if source.kind == "resume" for chunk in repository.list_chunks(source.id)]
-        project_chunks = [chunk for source in sources if source.kind != "resume" for chunk in repository.list_chunks(source.id)]
-        claims = [repository.create_claim(replace(claim, task_id=task_id)) for claim in extract_resume_claims(resume_chunks, project_chunks)]
+        candidates = extract_resume_claims(resume_chunks, [])
+        if not candidates:
+            raise HTTPException(status_code=422, detail="未找到可提取的简历表述，请检查简历的解析内容。")
+        claims = repository.create_claims_once(task_id, candidates)
         return [claim_to_response(claim) for claim in claims]
 
     @router.patch("/{task_id}/claims/{claim_id}")

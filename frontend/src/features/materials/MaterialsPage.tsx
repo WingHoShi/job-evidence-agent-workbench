@@ -11,7 +11,7 @@ function isImportResult(value: unknown): value is ImportResult {
     && Array.isArray(result.errors) && result.errors.every((item) => typeof item === "string"));
 }
 
-export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; sources: Source[]; onChanged: () => void | Promise<void> }) {
+export function MaterialsPage({ taskId, sources, onChanged, claimCount = 0, onReview, needsClaimRefresh = false, onClaimsGenerated }: { taskId: number; sources: Source[]; onChanged: () => void | Promise<void>; claimCount?: number; onReview?: () => void; needsClaimRefresh?: boolean; onClaimsGenerated?: (count: number) => void }) {
   const [kind, setKind] = useState("project");
   const [importMode, setImportMode] = useState<"files" | "directory" | "text">("files");
   const [message, setMessage] = useState<string | null>(null);
@@ -27,6 +27,9 @@ export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; 
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshSubject, setRefreshSubject] = useState("材料已保存");
   const refreshLock = useRef(false);
+  const [generated, setGenerated] = useState<{ taskId: number; count: number } | null>(null);
+  const existingCount = claimCount || (generated?.taskId === taskId ? generated.count : 0);
+  const hasResume = sources.some((source) => source.kind === "resume");
   const begin = (description: string, subject = "材料已保存") => {
     if (locked.current || refreshLock.current) return false;
     locked.current = true; setBusy(description); setMessage(null); setIsError(false);
@@ -38,6 +41,10 @@ export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; 
   const unknownImport = () => {
     setIsError(true); setUncertain(true);
     setMessage("未能确认本次导入结果，请先刷新材料列表核对；不要直接重复上传。");
+  };
+  const unknownClaims = () => {
+    setIsError(true); setUncertain(true);
+    setMessage("未能确认主张提取结果，请先刷新材料列表核对，不要连续重复操作。");
   };
   const refreshMaterials = async () => {
     if (refreshLock.current) return;
@@ -96,20 +103,27 @@ export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; 
   };
 
   const generateClaims = async () => {
-    if (!begin("正在提取能力主张…", "主张已提取")) return;
+    if (!hasResume || existingCount > 0 || !begin("正在提取能力主张…", "主张已提取")) return;
     try {
       const response = await fetch(`/api/tasks/${taskId}/claims/generate`, { method: "POST" });
       const claims = (await response.json().catch(() => null)) as { id: number }[] | { detail?: string } | null;
       if (!response.ok) {
+        if (response.status >= 500) { unknownClaims(); return; }
         setIsError(true);
-        setMessage((claims as { detail?: string } | null)?.detail || "能力主张提取失败，请检查模型配置后重试");
+        const detail = (claims as { detail?: unknown } | null)?.detail;
+        setMessage(typeof detail === "string" ? detail : "主张提取请求未完成，请检查任务状态。");
         return;
       }
-      setMessage(`已提取 ${Array.isArray(claims) ? claims.length : 0} 条能力主张`);
+      if (!Array.isArray(claims) || !claims.length || claims.some((claim) => !Number.isSafeInteger(claim?.id) || claim.id <= 0) || new Set(claims.map((claim) => claim.id)).size !== claims.length) {
+        unknownClaims();
+        return;
+      }
+      setGenerated({ taskId, count: claims.length });
+      onClaimsGenerated?.(claims.length);
+      setMessage(`已提取 ${claims.length} 条能力主张`);
       await refreshMaterials();
     } catch {
-      setIsError(true);
-      setMessage("能力主张提取失败，请检查网络或服务状态后重试");
+      unknownClaims();
     } finally { finish(); }
   };
 
@@ -151,14 +165,15 @@ export function MaterialsPage({ taskId, sources, onChanged }: { taskId: number; 
             {result.skipped_paths.length ? <><h3>已跳过 · {result.skipped_paths.length}</h3><ul>{result.skipped_paths.map((path, index) => <li key={index}>{path}</li>)}</ul></> : null}
             {result.errors.length ? <><h3>错误信息 · {result.errors.length}</h3><ul>{result.errors.map((error, index) => <li key={index}>{error}</li>)}</ul></> : null}
           </details> : null}
-          {refreshFailed ? <p className="material-feedback is-error" role="alert">{uncertain ? "材料列表刷新失败，导入结果仍未确认。" : `${refreshSubject}，但列表刷新失败，请先刷新列表，不要重复提交。`}</p> : null}
-          {uncertain || refreshFailed ? <button className="interview-button material-refresh" type="button" disabled={Boolean(busy) || refreshing} onClick={() => void refreshMaterials()}>{refreshing ? "正在刷新…" : "刷新材料列表"}</button> : null}
+          {refreshFailed ? <p className="material-feedback is-error" role="alert">{uncertain ? "材料列表刷新失败，本次操作结果仍未确认。" : `${needsClaimRefresh ? "主张已提取" : refreshSubject}，但列表刷新失败，请先刷新列表，不要重复提交。`}</p> : null}
+          {needsClaimRefresh && !busy && !refreshing && !refreshFailed ? <p className="material-feedback is-error" role="alert">主张已提取，但任务状态尚未刷新，请先刷新列表，不要重复提取。</p> : null}
+          {uncertain || refreshFailed || needsClaimRefresh ? <button className="interview-button material-refresh" type="button" disabled={Boolean(busy) || refreshing} onClick={() => void refreshMaterials()}>{refreshing ? "正在刷新…" : "刷新材料列表"}</button> : null}
         </article>
         <MaterialLibrary key={taskId} taskId={taskId} sources={sources} />
       </section>
       <section className="panel material-next-action">
-        <div><p className="eyebrow">下一步</p><h2>提取能力主张</h2><p className="muted-copy">仅从简历提取既有主张，项目材料用于核验，不会新增经历。</p></div>
-        <button className="primary-button" type="button" onClick={generateClaims} disabled={!sources.length || Boolean(busy) || refreshing}>提取能力主张</button>
+        <div><p className="eyebrow">下一步</p><h2>{existingCount ? "能力主张已就绪" : "提取能力主张"}</h2><p className="muted-copy">{existingCount ? `已有 ${existingCount} 条能力主张，可继续审核；不会重复提取或覆盖已有结果。` : hasResume ? "仅从简历提取既有主张，项目材料用于核验，不会新增经历。" : "请先导入简历，再提取能力主张；项目材料只用于核验。"}</p>{existingCount ? <p className="muted-copy">如果简历已修改并需要重新分析，请新建任务；原任务和记录会保留。</p> : null}</div>
+        {existingCount ? <button className="primary-button" type="button" onClick={onReview} disabled={!onReview || Boolean(busy) || refreshing || refreshFailed || needsClaimRefresh}>继续审核</button> : <button className="primary-button" type="button" onClick={generateClaims} disabled={!hasResume || Boolean(busy) || refreshing}>提取能力主张</button>}
       </section>
     </section>
   );

@@ -155,6 +155,22 @@ class SQLiteRepository:
         with self._connect() as connection:
             connection.execute("UPDATE claims SET status = ? WHERE id = ?", (status, claim_id))
 
+    def create_claims_once(self, task_id: int, claims: list[Claim]) -> list[Claim]:
+        # The check and whole batch share one writer transaction, including
+        # requests from other tabs/processes. Existing rows are never rebuilt.
+        query = "SELECT id, task_id, text, resume_locator, capability_tags, status FROM claims WHERE task_id = ? ORDER BY id"
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(query, (task_id,)).fetchall()
+            if not rows:
+                for claim in claims:
+                    connection.execute(
+                        "INSERT INTO claims (task_id, text, resume_locator, capability_tags, status) VALUES (?, ?, ?, ?, ?)",
+                        (task_id, claim.text, claim.resume_locator, json.dumps(claim.capability_tags), claim.status),
+                    )
+                rows = connection.execute(query, (task_id,)).fetchall()
+        return [Claim(row[0], row[1], row[2], row[3], tuple(json.loads(row[4])), row[5]) for row in rows]
+
     def undo_claim_review(self, task_id: int, claim_id: int, checkpoint_path: Path) -> None:
         """同一 SQLite 事务恢复主张、审核队列和事件，保留证据判定。"""
         with self._connect() as connection:
