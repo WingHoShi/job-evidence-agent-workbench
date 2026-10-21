@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import { AuditWorkspacePage } from "./AuditWorkspacePage";
@@ -21,6 +21,8 @@ const missingResults: Pick<TaskSnapshot, "assessments" | "gates">[] = [
   { assessments: snapshot.assessments, gates: {} },
   { assessments: {}, gates: { "1": { eligible: true, requires_review: false, reason: "支持充分" } } },
 ];
+const auditResponse = { status: "awaiting_review", claim_id: 1, events: [] };
+const assessmentResponse = { assessment: snapshot.assessments["1"], gate: snapshot.gates["1"], evidence: [] };
 
 test.each(missingResults)("判定或门禁缺失时风险显示待评估而非低风险 %#", (missingResult) => {
   render(<AuditWorkspacePage snapshot={{ ...snapshot, ...missingResult }} onChanged={vi.fn()} />);
@@ -58,6 +60,7 @@ test("选择主张后展示详情、审核提示和审核操作", () => {
 
 test("长证据默认折叠，风险与审核操作在原文之前且仍需确认风险", async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    ...assessmentResponse,
     evidence: [{ id: 11, locator: "health-service/README.md:1", text: "这是用于核验的长证据。".repeat(40) }],
   }) });
   vi.stubGlobal("fetch", fetchMock);
@@ -87,13 +90,13 @@ test("列表分别显示总数与待审核数，不把已审核主张算作待�
 });
 
 test("已有判定的当前待审核主张可手动重新判定，不自动发送请求", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ evidence: [] }) });
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => assessmentResponse });
   vi.stubGlobal("fetch", fetchMock);
   const onChanged = vi.fn();
   render(<AuditWorkspacePage snapshot={snapshot} onChanged={onChanged} />);
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "重新判定当前主张" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("候选证据判定已完成");
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("候选证据判定已完成"));
   expect(screen.getByText("已检索，没有可核验的候选证据")).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/tasks/7/claims/1/assessment", { method: "POST" });
   expect(onChanged).toHaveBeenCalledTimes(1);
@@ -128,7 +131,7 @@ test("未开始审核时保留长列表并提供开始操作", () => {
 });
 
 test("风险接受必须确认，取消不提交，确认请求绑定当前主张", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => auditResponse });
   vi.stubGlobal("fetch", fetchMock);
   render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
   const decisions = screen.getByRole("group", { name: "人工审核" });
@@ -141,12 +144,12 @@ test("风险接受必须确认，取消不提交，确认请求绑定当前主�
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "接受主张" }));
   fireEvent.click(screen.getByRole("button", { name: "确认风险并接受" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("审核结果已保存");
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("审核结果已保存"));
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ decision: "accepted", claim_id: 1, risk_acknowledged: true });
 });
 
 test("撤销需确认，失败保留原审核状态并可重试", async () => {
-  const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, json: async () => ({ detail: "撤销暂时失败" }) }).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+  const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, json: async () => ({ detail: "撤销暂时失败" }) }).mockResolvedValueOnce({ ok: true, json: async () => auditResponse });
   vi.stubGlobal("fetch", fetchMock);
   const onChanged = vi.fn();
   render(<AuditWorkspacePage snapshot={{ ...snapshot, claims: [{ ...snapshot.claims[0], status: "confirmed" }], audit: { ...snapshot.audit, status: "completed", claim_id: null } }} onChanged={onChanged} />);
@@ -158,7 +161,7 @@ test("撤销需确认，失败保留原审核状态并可重试", async () => {
   expect(screen.getByText("已接受")).toBeInTheDocument();
   expect(onChanged).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "确认撤销" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("已撤销审核，返回待审核");
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("已撤销审核，返回待审核"));
   expect(fetchMock).toHaveBeenLastCalledWith("/api/tasks/7/claims/1/undo-review", { method: "POST" });
   expect(onChanged).toHaveBeenCalledTimes(1);
 });
@@ -169,7 +172,7 @@ test("已生成报告时禁止在页面撤销审核", () => {
 });
 
 test("补证表单按需展开，收起后保留草稿且提交仍绑定当前主张", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => auditResponse });
   vi.stubGlobal("fetch", fetchMock);
   render(<AuditWorkspacePage snapshot={snapshot} onChanged={vi.fn()} />);
   expect(screen.queryByRole("textbox", { name: "补充说明" })).not.toBeInTheDocument();
@@ -181,7 +184,7 @@ test("补证表单按需展开，收起后保留草稿且提交仍绑定当前�
   expect(screen.getByRole("textbox", { name: "补充说明" })).toHaveValue("补充一份虚构运行记录");
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "保存补充证据" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("补充证据已保存");
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("补充证据已保存"));
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ decision: "supplement", claim_id: 1, risk_acknowledged: false, supplemental_text: "补充一份虚构运行记录" });
 });
 

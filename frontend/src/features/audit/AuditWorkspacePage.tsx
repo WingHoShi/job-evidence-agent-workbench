@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
-import { TaskSnapshot } from "../workbench/types";
+import { isAssessment, isAuditState, isGate, TaskSnapshot } from "../workbench/types";
 
 type Evidence = { id: number; text: string; locator: string };
+export type AuditOperation = { id: number; phase: "pending" | "saved" | "unknown"; message: string };
+let nextOperationId = 0;
+class AuditRequestRejected extends Error {}
 
 const verdictLabel = {
   strong: "充分支持",
@@ -45,7 +48,7 @@ function AuditConfirmDialog({ title, children, tone, confirmLabel, busy, error, 
   </div>;
 }
 
-export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnapshot; onChanged: () => void | Promise<void> }) {
+export function AuditWorkspacePage({ snapshot, onChanged, operation, onOperationChange }: { snapshot: TaskSnapshot; onChanged: () => void | Promise<void>; operation?: AuditOperation | null; onOperationChange?: (value: AuditOperation | null, expectedId?: number) => void }) {
   const [selectedId, setSelectedId] = useState<number | null>(snapshot.audit.claim_id ?? snapshot.claims[0]?.id ?? null);
   const [evidence, setEvidence] = useState<Record<number, Evidence[]>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -56,6 +59,14 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [supplement, setSupplement] = useState("");
   const [showSupplement, setShowSupplement] = useState(false);
+  const [localOperation, setLocalOperation] = useState<AuditOperation | null>(null);
+  const recovery = operation === undefined ? localOperation : operation;
+  const operationLock = useRef(false);
+  const blocked = busy || Boolean(recovery);
+  const setOperation = (value: AuditOperation | null, expectedId?: number) => {
+    setLocalOperation((current) => expectedId !== undefined && current?.id !== expectedId ? current : value);
+    onOperationChange?.(value, expectedId);
+  };
 
   const selectedClaim = snapshot.claims.find((claim) => claim.id === selectedId) ?? null;
   const assessment = selectedClaim ? snapshot.assessments[String(selectedClaim.id)] : undefined;
@@ -63,56 +74,81 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
   const isCurrentAuditClaim = selectedClaim?.id === snapshot.audit.claim_id;
 
   const selectClaim = (id: number) => {
-    if (busy) return;
+    if (blocked) return;
     setSelectedId(id); setConfirmAccept(false); setConfirmUndo(false); setConfirmReject(false);
   };
 
-  const request = async (url: string, options: RequestInit) => {
+  const request = async (url: string, options: RequestInit, assessmentClaimId?: number) => {
     const response = await fetch(url, options);
-    const body = await response.json().catch(() => null) as { detail?: string } | null;
-    if (!response.ok) throw new Error(body?.detail || "操作失败，请稍后重试");
+    const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+    if (!response.ok) {
+      if (response.status >= 500) throw new Error("结果尚未确认");
+      throw new AuditRequestRejected(typeof body?.detail === "string" ? body.detail : "请求未通过，请检查任务状态后重试");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("结果尚未确认");
+    if (assessmentClaimId === undefined) {
+      if (!isAuditState(body)) throw new Error("结果尚未确认");
+    } else {
+      const result = body as { assessment?: unknown; gate?: unknown; evidence?: Evidence[] } | null;
+      if (!result || !isAssessment(result.assessment) || result.assessment.claim_id !== assessmentClaimId || !isGate(result.gate)
+        || !Array.isArray(result.evidence) || !result.evidence.every((item) => Number.isSafeInteger(item?.id) && item.id > 0 && typeof item.text === "string" && typeof item.locator === "string")) throw new Error("结果尚未确认");
+    }
     return body;
+  };
+
+  const refreshAudit = async () => {
+    if (operationLock.current || recovery?.phase === "pending") return;
+    operationLock.current = true; setBusy(true);
+    try {
+      await onChanged();
+      setOperation(null, recovery?.id); setMessage(null); setIsError(false);
+    } catch { /* 保留待核对状态，只允许刷新，不重发写入。 */ }
+    finally { operationLock.current = false; setBusy(false); }
+  };
+
+  const performOperation = async (savedMessage: string, url: string, options: RequestInit, onSuccess?: (body: object) => void, assessmentClaimId?: number) => {
+    if (operationLock.current || recovery) return;
+    operationLock.current = true; setBusy(true); setMessage(null); setIsError(false);
+    const id = ++nextOperationId;
+    setOperation({ id, phase: "pending", message: "正在提交审核操作，请等待结果，不要重复提交。" });
+    try {
+      const body = await request(url, options, assessmentClaimId);
+      setOperation({ id, phase: "saved", message: `${savedMessage}，页面状态尚未同步，请刷新审核状态后继续，不要重复提交。` }, id);
+      setConfirmReject(false); setConfirmAccept(false); setConfirmUndo(false);
+      onSuccess?.(body);
+      setMessage(savedMessage);
+      try { await onChanged(); setOperation(null, id); }
+      catch { /* 提交已成功，不能把刷新失败报告为保存失败。 */ }
+    } catch (error) {
+      if (error instanceof AuditRequestRejected) {
+        setOperation(null, id); setIsError(true); setMessage(error.message);
+      } else {
+        setConfirmReject(false); setConfirmAccept(false); setConfirmUndo(false);
+        setOperation({ id, phase: "unknown", message: "本次操作结果尚未确认，请先刷新审核状态核对；不要直接重复提交。" }, id);
+      }
+    } finally { operationLock.current = false; setBusy(false); }
   };
 
   const runAssessment = async () => {
     if (!selectedClaim) return;
-    setBusy(true); setMessage(null); setIsError(false);
-    try {
-      const result = await request(`/api/tasks/${snapshot.id}/claims/${selectedClaim.id}/assessment`, { method: "POST" }) as { evidence?: Evidence[] } | null;
-      setEvidence((current) => ({ ...current, [selectedClaim.id]: result?.evidence || [] }));
-      setMessage("候选证据判定已完成");
-      await onChanged();
-    } catch (error) {
-      setIsError(true); setMessage(error instanceof Error ? error.message : "证据判定失败，请重试");
-    } finally { setBusy(false); }
+    const claimId = selectedClaim.id;
+    await performOperation("候选证据判定已完成", `/api/tasks/${snapshot.id}/claims/${claimId}/assessment`, { method: "POST" }, (body) => {
+      const result = body as { evidence?: Evidence[] };
+      setEvidence((current) => ({ ...current, [claimId]: result.evidence || [] }));
+    }, claimId);
   };
 
   const startAudit = async () => {
-    setBusy(true); setMessage(null); setIsError(false);
-    try {
-      await request(`/api/tasks/${snapshot.id}/audit/start`, { method: "POST" });
-      setMessage("已开始逐条审核");
-      await onChanged();
-    } catch (error) {
-      setIsError(true); setMessage(error instanceof Error ? error.message : "启动审核失败，请重试");
-    } finally { setBusy(false); }
+    await performOperation("已开始逐条审核", `/api/tasks/${snapshot.id}/audit/start`, { method: "POST" });
   };
 
   const submitDecision = async (decision: "accepted" | "rejected" | "supplement", riskAcknowledged = false) => {
     if (!selectedClaim || !isCurrentAuditClaim) return;
-    setBusy(true); setMessage(null); setIsError(false);
-    try {
-      await request(`/api/tasks/${snapshot.id}/audit/review`, {
+    await performOperation(decision === "supplement" ? "补充证据已保存" : "审核结果已保存", `/api/tasks/${snapshot.id}/audit/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, claim_id: selectedClaim.id, risk_acknowledged: riskAcknowledged, supplemental_text: decision === "supplement" ? supplement : undefined }),
-      });
-      setSupplement(""); setConfirmReject(false); setConfirmAccept(false);
-      setMessage(decision === "supplement" ? "补充证据已保存" : "审核结果已保存");
-      await onChanged();
-    } catch (error) {
-      setIsError(true); setMessage(error instanceof Error ? error.message : "审核保存失败，请重试");
-    } finally { setBusy(false); }
+      }, () => setSupplement(""));
   };
 
   const acceptClaim = () => {
@@ -122,20 +158,14 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
 
   const undoReview = async () => {
     if (!selectedClaim) return;
-    setBusy(true); setMessage(null); setIsError(false);
-    try {
-      await request(`/api/tasks/${snapshot.id}/claims/${selectedClaim.id}/undo-review`, { method: "POST" });
-      setConfirmUndo(false);
-      setMessage("已撤销审核，返回待审核");
-      await onChanged();
-    } catch (error) {
-      setIsError(true); setMessage(error instanceof Error ? error.message : "撤销失败，请重试");
-    } finally { setBusy(false); }
+    await performOperation("已撤销审核，返回待审核", `/api/tasks/${snapshot.id}/claims/${selectedClaim.id}/undo-review`, { method: "POST" });
   };
 
   return (
     <section className="audit-workspace">
       <header className="page-header"><p className="eyebrow">当前阶段</p><h1>证据审计</h1><p>逐条核验简历中的能力主张，并保留可追溯的审核结论。</p></header>
+      {recovery ? <section className="panel action-panel" aria-label="审核状态恢复"><p className={`audit-feedback ${recovery.phase === "unknown" ? "is-error" : ""}`} role={recovery.phase === "pending" ? "status" : "alert"}>{recovery.message}</p>{recovery.phase !== "pending" ? <button className="audit-button audit-button-primary" style={{ justifySelf: "start" }} type="button" disabled={busy} onClick={() => void refreshAudit()}>{busy ? "正在刷新审核状态…" : "刷新审核状态"}</button> : null}</section> : null}
+      <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {snapshot.audit.status === "created" ? <section className="panel action-panel"><h2>开始审核</h2><p>提取完成后，按主张逐条确认、拒绝或补充证据。</p><button className="primary-button" type="button" onClick={startAudit} disabled={busy || !snapshot.claims.length}>开始逐条审核</button></section> : null}
       <section className="audit-grid">
         <article className="panel table-panel">
@@ -184,7 +214,8 @@ export function AuditWorkspacePage({ snapshot, onChanged }: { snapshot: TaskSnap
       {confirmReject ? <AuditConfirmDialog title="确认拒绝主张" tone="danger" confirmLabel="确认拒绝" busy={busy} error={isError ? message : null} onConfirm={() => submitDecision("rejected")} onCancel={() => setConfirmReject(false)}><p className="audit-modal-claim">{selectedClaim?.text}</p><p>拒绝后，该能力主张不会进入报告中的已采信证据。</p></AuditConfirmDialog> : null}
       {confirmAccept ? <AuditConfirmDialog title="确认接受风险主张" tone="warning" confirmLabel="确认风险并接受" busy={busy} error={isError ? message : null} onConfirm={() => submitDecision("accepted", true)} onCancel={() => setConfirmAccept(false)}><p className="audit-modal-claim">{selectedClaim?.text}</p><p>{gate?.reason || "该主张尚未完成证据判定"}。接受仅记录你的人工决定，不会把证据不足改成证据充分。</p></AuditConfirmDialog> : null}
       {confirmUndo ? <AuditConfirmDialog title="确认撤销审核" tone="primary" confirmLabel="确认撤销" busy={busy} error={isError ? message : null} onConfirm={undoReview} onCancel={() => setConfirmUndo(false)}><p className="audit-modal-claim">{selectedClaim?.text}</p><p>将撤销本条人工决定，返回待审核并切回这条主张。证据判定、材料和历史记录会保留；重新审核后可再次接受或拒绝。</p></AuditConfirmDialog> : null}
-      {message && !(isError && (confirmReject || confirmAccept || confirmUndo)) ? <p className={`audit-feedback ${isError ? "is-error" : ""}`} role={isError ? "alert" : "status"}>{message}</p> : null}
+      </fieldset>
+      {message && !recovery && !(isError && (confirmReject || confirmAccept || confirmUndo)) ? <p className={`audit-feedback ${isError ? "is-error" : ""}`} role={isError ? "alert" : "status"}>{message}</p> : null}
     </section>
   );
 }

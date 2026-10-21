@@ -1,12 +1,12 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { MaterialsPage } from "../materials/MaterialsPage";
-import { AuditWorkspacePage } from "../audit/AuditWorkspacePage";
+import { AuditWorkspacePage, type AuditOperation } from "../audit/AuditWorkspacePage";
 import { InterviewWorkspace } from "../interview/InterviewWorkspace";
 import { ReportWorkspacePage } from "../reports/ReportWorkspacePage";
 import { WorkbenchShell, WorkspacePage } from "./WorkbenchShell";
 import { TaskOverviewPage } from "./TaskOverviewPage";
-import { TaskSnapshot } from "./types";
+import { isTaskSnapshot, TaskSnapshot } from "./types";
 
 const activeTaskKey = "job-evidence.active-task-id";
 
@@ -24,6 +24,13 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   const [taskId, setTaskId] = useState(() => initialTaskId ?? readActiveTaskId());
   const [snapshot, setSnapshot] = useState<TaskSnapshot | null>(null);
   const [confirmedClaimCounts, setConfirmedClaimCounts] = useState<Record<number, number>>({});
+  const [auditOperations, setAuditOperations] = useState<Record<number, AuditOperation | null>>({});
+  const auditOperationsRef = useRef<Record<number, AuditOperation | null>>({});
+  const updateAuditOperation = useCallback((id: number, value: AuditOperation | null, expectedId?: number) => {
+    if (expectedId !== undefined && auditOperationsRef.current[id]?.id !== expectedId) return;
+    auditOperationsRef.current = { ...auditOperationsRef.current, [id]: value };
+    setAuditOperations(auditOperationsRef.current);
+  }, []);
   const [activePage, setActivePage] = useState<WorkspacePage>("overview");
   const [loading, setLoading] = useState(Boolean(taskId));
   const [message, setMessage] = useState<string | null>(null);
@@ -36,14 +43,17 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   const [pickerError, setPickerError] = useState<string | null>(null);
 
   const refreshTask = useCallback(async (taskId: number) => {
+    const operationAtRead = auditOperationsRef.current[taskId];
     const response = await fetch(`/api/tasks/${taskId}`);
     if (!response.ok) throw new Error("无法读取任务状态");
-    const next = (await response.json()) as TaskSnapshot;
+    const next: unknown = await response.json();
     if (activeId.current !== taskId) return;
-    if (next.id !== taskId) throw new Error("任务响应不匹配");
+    if (!isTaskSnapshot(next) || next.id !== taskId) throw new Error("任务响应不匹配或结构不完整");
+    if (auditOperationsRef.current[taskId]?.id !== operationAtRead?.id) throw new Error("审核操作已变化，请重新刷新");
     setSnapshot(next);
+    if (operationAtRead?.phase !== "pending") updateAuditOperation(taskId, null, operationAtRead?.id);
     setMessage(null);
-  }, []);
+  }, [updateAuditOperation]);
 
   const loadTask = useCallback(async (id: number) => {
     setLoading(true);
@@ -155,7 +165,7 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
       {message ? <div className="panel"><p role="alert">{message}</p><button type="button" disabled={loading} onClick={() => void loadTask(snapshot.id)}>{loading ? "正在重试…" : "重试读取任务"}</button></div> : null}
       {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} claimCount={Math.max(snapshot.claims.length, confirmedClaimCounts[snapshot.id] ?? 0)} needsClaimRefresh={(confirmedClaimCounts[snapshot.id] ?? 0) > snapshot.claims.length} onClaimsGenerated={(count) => setConfirmedClaimCounts((previous) => ({ ...previous, [snapshot.id]: count }))} onReview={() => setActivePage("audit")} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "overview" ? <TaskOverviewPage snapshot={snapshot} onNavigate={setActivePage} /> : null}
-      {activePage === "audit" ? <AuditWorkspacePage snapshot={snapshot} onChanged={() => refreshTask(snapshot.id)} /> : null}
+      {activePage === "audit" ? <AuditWorkspacePage key={snapshot.id} snapshot={snapshot} operation={auditOperations[snapshot.id] ?? null} onOperationChange={(value, expectedId) => updateAuditOperation(snapshot.id, value, expectedId)} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "report" ? <ReportWorkspacePage taskId={snapshot.id} auditStatus={snapshot.audit.status} onGenerated={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "interview" ? <InterviewWorkspace taskId={snapshot.id} reportReady={snapshot.report_ready} onChanged={() => refreshTask(snapshot.id)} /> : null}
     </WorkbenchShell>

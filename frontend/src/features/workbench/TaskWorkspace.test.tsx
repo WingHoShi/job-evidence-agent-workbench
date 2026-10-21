@@ -198,6 +198,7 @@ test("读取已有任务快照后展示概览和继续审核操作", async () =>
         ],
         assessments: {},
         gates: {},
+        report_ready: false,
         audit: { status: "awaiting_review", claim_id: 2, events: [], recoverable: true },
       }),
     }),
@@ -221,6 +222,7 @@ test("导航到材料中心后展示任务材料", async () => {
         status: "draft",
         sources: [{ id: 1, kind: "resume", label: "简历", relative_path: "pasted/简历.txt" }],
         claims: [], assessments: {}, gates: {},
+        report_ready: false,
         audit: { status: "created", claim_id: null, events: [], recoverable: false },
       }),
     }),
@@ -242,6 +244,7 @@ test("导航到证据审计后展示逐条审核工作区", async () => {
       id: 7, name: "AI 应用开发岗位", status: "draft", sources: [],
       claims: [{ id: 1, text: "熟悉 FastAPI", resume_locator: "简历:1", capability_tags: [], status: "pending_review" }],
       assessments: {}, gates: {},
+      report_ready: false,
       audit: { status: "awaiting_review", claim_id: 1, events: [], recoverable: true },
     }),
   }));
@@ -283,6 +286,7 @@ test("没有当前任务时创建任务并进入材料中心", async () => {
           claims: [],
           assessments: {},
           gates: {},
+          report_ready: false,
           audit: { status: "created", claim_id: null, events: [], recoverable: false },
         }),
   }));
