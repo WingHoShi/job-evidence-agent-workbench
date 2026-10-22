@@ -78,7 +78,7 @@ test("等待提交期间禁用按钮，不能双击重复生成", async () => {
 
 test("旧版历史仅查看，不伪造复盘", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse([{ id: 1, task_id: 7, version: 1, status: "in_progress", question_count: 5 }]))
-    .mockResolvedValueOnce(jsonResponse({ session: { task_id: 7 }, turns: [{ id: 1, question: "旧题", answer: null }], review: null })));
+    .mockResolvedValueOnce(jsonResponse({ session: { id: 1, task_id: 7 }, turns: [{ id: 1, question: "旧题", answer: null }], review: null })));
   render(<InterviewWorkspace taskId={7} reportReady onChanged={vi.fn()} />);
   fireEvent.click(await screen.findByRole("button", { name: /查看旧版模板面试/ }));
   expect(await screen.findByText("旧题")).toBeInTheDocument();

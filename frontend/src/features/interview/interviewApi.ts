@@ -17,7 +17,7 @@ export type InterviewSession = InterviewOptions & {
   operation: { id: number; kind: "question" | "review"; state: "pending" | "running" | "failed" | "succeeded"; attempt_count: number; safe_error: string | null; retry_allowed: boolean; usage: Record<string, number> | null } | null;
 };
 export type InterviewSummary = { id: number; task_id: number; version: number; status: string; question_count: number };
-export type LegacyInterview = { session: { task_id: number }; turns: { id: number; question: string; answer: string | null }[]; review: null };
+export type LegacyInterview = { session: { id: number; task_id: number }; turns: { id: number; question: string; answer: string | null }[]; review: null };
 
 async function request<T>(url: string, payload?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
