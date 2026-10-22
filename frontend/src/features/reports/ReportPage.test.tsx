@@ -32,7 +32,7 @@ test("生成完成后展示报告并提供 Markdown 下载", async () => {
   await waitFor(() => expect(screen.getByRole("heading", { name: "岗位匹配与证据审计报告" })).toBeInTheDocument());
   expect(screen.getByText("人工已接受")).toBeInTheDocument();
   expect(screen.getByText("未判定")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "下载 Markdown" })).toHaveAttribute("href", "/api/tasks/3/report.md");
+  expect(screen.getByRole("button", { name: "下载 Markdown" })).toBeEnabled();
 });
 
 test("待审核主张未完成时说明无法生成报告", async () => {

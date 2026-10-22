@@ -1,15 +1,36 @@
 import { useRef, useState } from "react";
-import { emptyReportState, isReport, type ReportViewState } from "./reportTypes";
+import { emptyReportState, isReport, type Report, type ReportViewState } from "./reportTypes";
+import { reportMarkdown } from "./reportMarkdown";
 let nextRequestId = 0;
 
 export function ReportWorkspacePage({ taskId, auditStatus, onGenerated, state, onStateChange }: { taskId: number; auditStatus: string; onGenerated: () => void | Promise<void>; state?: ReportViewState; onStateChange?: (value: ReportViewState, expectedId: number) => void }) {
   const [local, setLocal] = useState(emptyReportState);
+  const [downloadMessage, setDownloadMessage] = useState<{ report: Report; text: string; error: boolean } | null>(null);
   const view = state ?? local;
   const current = useRef(view);
   current.current = view;
   const { report, message, needsSync } = view;
   const busy = view.busy !== null;
   const ready = auditStatus === "completed";
+  const download = () => {
+    const displayed = current.current.report;
+    if (!displayed) return;
+    let url: string | undefined;
+    let anchor: HTMLAnchorElement | undefined;
+    try {
+      url = URL.createObjectURL(new Blob([reportMarkdown(displayed)], { type: "text/markdown;charset=utf-8" }));
+      anchor = document.createElement("a");
+      anchor.href = url; anchor.download = `report-${displayed.task_id}.md`;
+      anchor.hidden = true; document.body.appendChild(anchor); anchor.click();
+      setDownloadMessage({ report: displayed, text: "已发起下载，内容为当前显示版本；请在浏览器下载列表中确认文件，分享前检查敏感信息。", error: false });
+    } catch {
+      setDownloadMessage({ report: displayed, text: "未能发起下载，请检查浏览器下载权限后重试；当前报告未改变。", error: true });
+    } finally {
+      anchor?.remove();
+      // Let the browser start reading the object URL before releasing it.
+      if (url) { const created = url; const revoke = URL.revokeObjectURL.bind(URL); window.setTimeout(() => revoke(created), 1000); }
+    }
+  };
   const publish = (next: ReportViewState, expectedId: number) => {
     if (current.current.id !== expectedId) return;
     current.current = next; setLocal(next); onStateChange?.(next, expectedId);
@@ -60,7 +81,8 @@ export function ReportWorkspacePage({ taskId, auditStatus, onGenerated, state, o
     {needsSync && !busy ? <button className="report-refresh" style={{ marginBottom: 20 }} type="button" onClick={() => void refreshStatus()}>刷新任务状态</button> : null}
     {report ? <div className="report-content">
       <section className="panel report-summary" aria-label="审核摘要">
-        <div className="report-toolbar"><div><p className="eyebrow">审核摘要</p><h2>岗位匹配与证据审计报告</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div><div className="report-actions"><button className="report-refresh" type="button" onClick={generate} disabled={!ready || busy || needsSync}>{view.busy === "report" ? "正在生成…" : "刷新报告"}</button><a className="report-download" href={`/api/tasks/${taskId}/report.md`}>下载 Markdown</a></div></div>
+        <div className="report-toolbar"><div><p className="eyebrow">审核摘要</p><h2>岗位匹配与证据审计报告</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div><div className="report-actions"><button className="report-refresh" type="button" onClick={generate} disabled={!ready || busy || needsSync}>{view.busy === "report" ? "正在生成…" : "刷新报告"}</button><button className="report-download" type="button" onClick={download} title="下载当前显示的报告，不重新生成；分享前请检查敏感信息。">下载 Markdown</button></div></div>
+        {downloadMessage?.report === report ? <p className={downloadMessage.error ? "report-warning" : "muted-copy"} role={downloadMessage.error ? "alert" : "status"}>{downloadMessage.text}</p> : null}
         <div className="report-metrics">
           <span>人工接受 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已接受").length}</strong></span>
           <span>人工拒绝 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已拒绝").length}</strong></span>

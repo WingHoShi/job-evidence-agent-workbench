@@ -44,7 +44,7 @@ test("报告区分人工决定与证据支持度并展示来源和岗位初筛",
   expect(screen.getAllByText(/人工接受不等于证据充分/).length).toBeGreaterThan(0);
   expect(screen.getByText(/src\/app.py/)).toBeInTheDocument();
   expect(screen.getByText("有关联主张，证据待补")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "下载 Markdown" })).toHaveAttribute("href", "/api/tasks/7/report.md");
+  expect(screen.getByRole("button", { name: "下载 Markdown" })).toBeEnabled();
   const claim = screen.getByRole("heading", { name: "主张 1 · 使用 FastAPI 和 Docker Compose" }).closest("article")!;
   expect(within(claim).getByText("人工已接受")).toBeVisible();
   expect(within(claim).getByText("部分支持")).toBeVisible();
@@ -62,6 +62,6 @@ test("报告区分人工决定与证据支持度并展示来源和岗位初筛",
   fireEvent.click(evidenceToggle);
   expect(within(claim).getByText("from fastapi import FastAPI")).toBeVisible();
   const summary = screen.getByRole("region", { name: "审核摘要" });
-  expect(within(summary).getByRole("link", { name: "下载 Markdown" })).toBeVisible();
+  expect(within(summary).getByRole("button", { name: "下载 Markdown" })).toBeVisible();
   expect(within(summary).getByRole("button", { name: "刷新报告" })).toBeEnabled();
 });
