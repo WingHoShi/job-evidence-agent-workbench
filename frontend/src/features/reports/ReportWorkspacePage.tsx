@@ -1,47 +1,66 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { emptyReportState, isReport, type ReportViewState } from "./reportTypes";
+let nextRequestId = 0;
 
-type Report = {
-  generated_at: string;
-  confirmed_claims: [string, string][];
-  insufficient_claims: string[];
-  next_steps: string[];
-  conflicts: string[];
-  jd_coverage: string;
-  jd_requirements: { text: string; locator: string; keywords: string[]; claim_ids: number[]; status: string }[];
-  claim_reviews: {
-    claim_id: number; text: string; resume_locator: string;
-    review_status: string; verdict: string; risk: string;
-    rationale: string; gate_reason: string; warning: string; suggestions: string[];
-    evidence: { chunk_id: number; source_kind: string; source_label: string; relative_path: string; locator: string; excerpt: string }[];
-  }[];
-};
-
-export function ReportWorkspacePage({ taskId, auditStatus, onGenerated }: { taskId: number; auditStatus: string; onGenerated: () => void | Promise<void> }) {
-  const [report, setReport] = useState<Report | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+export function ReportWorkspacePage({ taskId, auditStatus, onGenerated, state, onStateChange }: { taskId: number; auditStatus: string; onGenerated: () => void | Promise<void>; state?: ReportViewState; onStateChange?: (value: ReportViewState, expectedId: number) => void }) {
+  const [local, setLocal] = useState(emptyReportState);
+  const view = state ?? local;
+  const current = useRef(view);
+  current.current = view;
+  const { report, message, needsSync } = view;
+  const busy = view.busy !== null;
   const ready = auditStatus === "completed";
+  const publish = (next: ReportViewState, expectedId: number) => {
+    if (current.current.id !== expectedId) return;
+    current.current = next; setLocal(next); onStateChange?.(next, expectedId);
+  };
+  const synchronize = async (previous: ReportViewState) => {
+    try {
+      await onGenerated();
+      publish({ ...previous, busy: null, needsSync: false, message: null }, previous.id);
+    } catch {
+      publish({ ...previous, busy: null, needsSync: true, message: "报告已取得，但任务状态刷新失败。请刷新任务状态，不必重新生成报告。" }, previous.id);
+    }
+  };
+  const refreshStatus = async () => {
+    const previous = current.current;
+    if (previous.busy || !previous.needsSync) return;
+    const next: ReportViewState = { ...previous, id: ++nextRequestId, busy: "sync", message: null };
+    publish(next, previous.id);
+    await synchronize(next);
+  };
 
   const generate = async () => {
-    setBusy(true); setMessage(null);
+    const previous = current.current;
+    if (!ready || previous.busy || previous.needsSync) return;
+    const next: ReportViewState = { ...previous, id: ++nextRequestId, busy: "report", message: null };
+    publish(next, previous.id);
     try {
       const response = await fetch(`/api/tasks/${taskId}/report`);
-      const body = await response.json().catch(() => null) as Report & { detail?: string } | null;
-      if (!response.ok) throw new Error(body?.detail || "报告生成失败，请稍后重试");
-      setReport(body);
-      await onGenerated();
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = (body as { detail?: unknown } | null)?.detail;
+        throw new Error(typeof detail === "string" ? detail : "请求未完成，请检查服务状态后重试。");
+      }
+      if (!isReport(body, taskId)) throw new Error("未能取得有效报告，请核对服务状态后重试。");
+      const received: ReportViewState = { ...next, report: body, busy: "sync", needsSync: true };
+      publish(received, next.id);
+      await synchronize(received);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "报告生成失败，请稍后重试");
-    } finally { setBusy(false); }
+      const detail = error instanceof Error ? error.message : "请求未完成，请稍后重试。";
+      publish({ ...next, busy: null, message: previous.report ? `本次报告刷新未完成，当前仍显示上次取得的报告。${detail}` : detail }, next.id);
+    }
   };
 
   return <section className="report-workspace">
     <header className="page-header"><p className="eyebrow">当前阶段</p><h1>审计报告</h1><p>只汇总已完成逐条审核的能力主张与风险结论。</p></header>
     {!report ? <section className="panel report-toolbar"><div><h2>岗位匹配与证据审计报告</h2>{!ready ? <p>完成全部主张审核后可生成报告</p> : <p>生成后可导出 Markdown，并解锁文字模拟面试。</p>}</div><button className="primary-button" type="button" onClick={generate} disabled={!ready || busy}>{busy ? "正在生成…" : "生成审计报告"}</button></section> : null}
     {message ? <p className="report-warning" role="alert">{message}</p> : null}
+    {view.busy === "sync" ? <p className="muted-copy" role="status">报告已取得，正在同步任务状态…</p> : null}
+    {needsSync && !busy ? <button className="report-refresh" style={{ marginBottom: 20 }} type="button" onClick={() => void refreshStatus()}>刷新任务状态</button> : null}
     {report ? <div className="report-content">
       <section className="panel report-summary" aria-label="审核摘要">
-        <div className="report-toolbar"><div><p className="eyebrow">审核摘要</p><h2>岗位匹配与证据审计报告</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div><div className="report-actions"><button className="report-refresh" type="button" onClick={generate} disabled={!ready || busy}>{busy ? "正在生成…" : "刷新报告"}</button><a className="report-download" href={`/api/tasks/${taskId}/report.md`}>下载 Markdown</a></div></div>
+        <div className="report-toolbar"><div><p className="eyebrow">审核摘要</p><h2>岗位匹配与证据审计报告</h2><p className="muted-copy">生成时间：{report.generated_at}</p></div><div className="report-actions"><button className="report-refresh" type="button" onClick={generate} disabled={!ready || busy || needsSync}>{view.busy === "report" ? "正在生成…" : "刷新报告"}</button><a className="report-download" href={`/api/tasks/${taskId}/report.md`}>下载 Markdown</a></div></div>
         <div className="report-metrics">
           <span>人工接受 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已接受").length}</strong></span>
           <span>人工拒绝 <strong>{report.claim_reviews.filter((item) => item.review_status === "人工已拒绝").length}</strong></span>

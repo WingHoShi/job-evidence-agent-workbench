@@ -25,6 +25,7 @@ test("报告生成失败时展示可理解提示", async () => {
 test("报告区分人工决定与证据支持度并展示来源和岗位初筛", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
     generated_at: "2026-10-07T12:00:00",
+    task_id: 7,
     confirmed_claims: [["使用 FastAPI 和 Docker Compose", "简历1"]],
     insufficient_claims: ["使用 FastAPI 和 Docker Compose", "性能优化"],
     conflicts: [], jd_coverage: "规则初筛，不代表岗位匹配率",

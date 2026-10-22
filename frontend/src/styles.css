@@ -272,15 +272,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .report-download:focus-visible, .report-claim summary:focus-visible { outline: 2px solid #84b1e6; outline-offset: 3px; }
 .report-workspace .report-summary p { margin: 0; }
 .report-disclaimer { border-top: 1px solid var(--border); padding-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
-.report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.report-metrics > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #e6edf5; border-radius: 8px; background: #f7faff; padding: 12px 16px; color: var(--muted); font-size: 13px; }
-.report-metrics strong { padding-left: 12px; font-size: 22px; color: var(--primary); }
-.report-claims { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.report-metrics { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+.report-metrics > span { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.report-metrics strong { font-size: 22px; color: var(--primary); }
+.report-claims { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .report-workspace .report-claim h2 { margin: 0 0 8px; font-size: 16px; line-height: 1.7; }
 .report-claim > .muted-copy { margin: 0; font-size: 12px; }
 .report-claim h3 { font-size: 13px; margin: 20px 0 10px; }
 .report-labels { display: flex; flex-wrap: wrap; gap: 14px 24px; margin: 20px 0; }
-.report-labels > div { display: grid; gap: 6px; justify-items: start; }
+.report-labels > div { display: inline-flex; align-items: center; gap: 8px; }
 .report-field-label { color: var(--muted); font-size: 12px; }
 .report-claim-details { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 18px; }
 .report-claim-details > summary { color: #546b83; cursor: pointer; font-size: 13px; }

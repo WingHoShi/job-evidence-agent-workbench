@@ -4,6 +4,7 @@ import { MaterialsPage } from "../materials/MaterialsPage";
 import { AuditWorkspacePage, type AuditOperation } from "../audit/AuditWorkspacePage";
 import { InterviewWorkspace } from "../interview/InterviewWorkspace";
 import { ReportWorkspacePage } from "../reports/ReportWorkspacePage";
+import { type ReportViewState } from "../reports/reportTypes";
 import { WorkbenchShell, WorkspacePage } from "./WorkbenchShell";
 import { TaskOverviewPage } from "./TaskOverviewPage";
 import { isTaskSnapshot, TaskSnapshot } from "./types";
@@ -24,6 +25,13 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   const [taskId, setTaskId] = useState(() => initialTaskId ?? readActiveTaskId());
   const [snapshot, setSnapshot] = useState<TaskSnapshot | null>(null);
   const [confirmedClaimCounts, setConfirmedClaimCounts] = useState<Record<number, number>>({});
+  const [reports, setReports] = useState<Record<number, ReportViewState>>({});
+  const reportsRef = useRef<Record<number, ReportViewState>>({});
+  const updateReport = useCallback((taskId: number, value: ReportViewState, expectedId: number) => {
+    if ((reportsRef.current[taskId]?.id ?? 0) !== expectedId) return;
+    reportsRef.current = { ...reportsRef.current, [taskId]: value };
+    setReports(reportsRef.current);
+  }, []);
   const [auditOperations, setAuditOperations] = useState<Record<number, AuditOperation | null>>({});
   const auditOperationsRef = useRef<Record<number, AuditOperation | null>>({});
   const updateAuditOperation = useCallback((id: number, value: AuditOperation | null, expectedId?: number) => {
@@ -42,13 +50,14 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
   const [pickerBusy, setPickerBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
 
-  const refreshTask = useCallback(async (taskId: number) => {
+  const refreshTask = useCallback(async (taskId: number, requireReportReady = false) => {
     const operationAtRead = auditOperationsRef.current[taskId];
     const response = await fetch(`/api/tasks/${taskId}`);
     if (!response.ok) throw new Error("无法读取任务状态");
     const next: unknown = await response.json();
-    if (activeId.current !== taskId) return;
     if (!isTaskSnapshot(next) || next.id !== taskId) throw new Error("任务响应不匹配或结构不完整");
+    if (requireReportReady && (!next.report_ready || next.audit.status !== "completed")) throw new Error("任务尚未确认报告就绪");
+    if (activeId.current !== taskId) return;
     if (auditOperationsRef.current[taskId]?.id !== operationAtRead?.id) throw new Error("审核操作已变化，请重新刷新");
     setSnapshot(next);
     if (operationAtRead?.phase !== "pending") updateAuditOperation(taskId, null, operationAtRead?.id);
@@ -166,7 +175,7 @@ export function TaskWorkspace({ initialTaskId }: { initialTaskId?: number }) {
       {activePage === "materials" ? <MaterialsPage taskId={snapshot.id} sources={snapshot.sources} claimCount={Math.max(snapshot.claims.length, confirmedClaimCounts[snapshot.id] ?? 0)} needsClaimRefresh={(confirmedClaimCounts[snapshot.id] ?? 0) > snapshot.claims.length} onClaimsGenerated={(count) => setConfirmedClaimCounts((previous) => ({ ...previous, [snapshot.id]: count }))} onReview={() => setActivePage("audit")} onChanged={() => refreshTask(snapshot.id)} /> : null}
       {activePage === "overview" ? <TaskOverviewPage snapshot={snapshot} onNavigate={setActivePage} /> : null}
       {activePage === "audit" ? <AuditWorkspacePage key={snapshot.id} snapshot={snapshot} operation={auditOperations[snapshot.id] ?? null} onOperationChange={(value, expectedId) => updateAuditOperation(snapshot.id, value, expectedId)} onChanged={() => refreshTask(snapshot.id)} /> : null}
-      {activePage === "report" ? <ReportWorkspacePage taskId={snapshot.id} auditStatus={snapshot.audit.status} onGenerated={() => refreshTask(snapshot.id)} /> : null}
+      {activePage === "report" ? <ReportWorkspacePage key={snapshot.id} taskId={snapshot.id} auditStatus={snapshot.audit.status} state={reports[snapshot.id]} onStateChange={(value, expectedId) => updateReport(snapshot.id, value, expectedId)} onGenerated={() => refreshTask(snapshot.id, true)} /> : null}
       {activePage === "interview" ? <InterviewWorkspace taskId={snapshot.id} reportReady={snapshot.report_ready} onChanged={() => refreshTask(snapshot.id)} /> : null}
     </WorkbenchShell>
   );
